@@ -41,22 +41,33 @@ class NeoX20BModel(nn.Module):
         )
 
     def forward(self, x, attention_mask=None, layer_past=None):
+        print("Started model forward pass")
+        print()
         if attention_mask is None:
             attention_mask = generate_mask(x.shape[1]).to(x.device)
+            
+        print("Mask Generated")
+        
         if self.use_cache:
             if layer_past is None:
                 kv_length = x.shape[1]
             else:
                 kv_length = layer_past[0].shape[1] + 1
             attention_mask = attention_mask[..., :x.shape[1], :kv_length]
+            
+        print("Cache Finished")
 
         if layer_past is None:
             layer_past = [None] * len(self.layer_list)
         kv_cache_list = []
         hidden_states = self.embed_in(x)
         hidden_states = self.pre_transformer_transpose(hidden_states)
+        
+        print("Hidden state generated")
+        print()
 
         for layer_i, layer in enumerate(self.layer_list):
+            print("Started layer:", layer_i)
             hidden_states, kv_cache = layer(
                 x=hidden_states,
                 attention_mask=attention_mask,
@@ -101,14 +112,20 @@ class TransformerLayer(nn.Module):
     def forward(self, x, attention_mask, layer_past=None):
         residual = x
         ln_output = self.input_layernorm(x)
+        print("Layernorm Completed")
         attention_output, kv_cache = self.attention(
             ln_output,
             attention_mask,
             layer_past=layer_past,
         )
+        print("Attention Completed")
         post_attn_ln = self.post_attention_layernorm(x)
+        print("Layernorm 2 Completed")
         mlp_output = self.mlp(hidden_states=post_attn_ln)
+        print("MLP completed")
         output = residual + mlp_output + attention_output
+        print("Transformer layer finished")
+        print()
         return output, kv_cache
 
 
