@@ -159,7 +159,10 @@ class SelfAttention(nn.Module):
 
         # Compute QKV
         # Attention heads [sq, b, h] --> [sq, b, (np * 3 * hn)]
+        print(" Start Attention Module")
         qkv = self.query_key_value(hidden_states)
+        
+        print(" QKV completed")
 
         # [sq, b, (np * 3 * hn)] --> [sq, b, np, 3 * hn]
         new_qkv_shape = qkv.size()[:-1] + (
@@ -187,12 +190,18 @@ class SelfAttention(nn.Module):
         if has_layer_past:
             offset = layer_past[0].shape[0]
             seq_len += offset
+            
+        print(" Started Rotary Embedding")
         cos, sin = self.rotary_emb(value_layer, seq_len=seq_len)
+        
+        print("  Value embedding finished")
         query_layer, key_layer = rotary.apply_rotary_pos_emb(
             query_rot, key_rot, cos, sin, offset=offset,
         )
+        print("  Q K embedding finished")
         query_layer = torch.cat((query_layer, query_pass), dim=-1)
         key_layer = torch.cat((key_layer, key_pass), dim=-1)
+        print(" Rotart embedding finished")
 
         # Cache QKV values
         if has_layer_past:
@@ -206,9 +215,11 @@ class SelfAttention(nn.Module):
 
         # Compute attention
         # noinspection PyTypeChecker
+        print(" Starting attention mechanism")
         context_layer = self.attention(
             query_layer, key_layer, value_layer, attention_mask
         )
+        print(" Attention mechanism complete")
 
         # Reshape outputs
         # [b, np, sq, hn] --> [sq, b, np, hn]
@@ -223,7 +234,9 @@ class SelfAttention(nn.Module):
         # =================
         # Output. [sq, b, h]
         # =================
+        print(" Started final dense layer")
         output = self.dense(context_layer)
+        print(" Dense layer finished")
 
         return output, kv_cache
 
