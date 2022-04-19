@@ -44,7 +44,7 @@ def greedy_generate_text(model: nn.Module,
                          tokenizer,
                          initial_str: str,
                          max_seq_len: int,
-                         device=torch.device("cuda:0"),
+                         device=torch.device("cpu"),
                          verbose=True):
     """Generate greedily from 20B.
 

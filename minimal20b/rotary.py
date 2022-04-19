@@ -16,13 +16,14 @@ class RotaryEmbedding(torch.nn.Module):
             seq_len = x.shape[seq_dim]
         if self.max_seq_len_cached is None or (seq_len > self.max_seq_len_cached):
             self.max_seq_len_cached = seq_len
-            t = torch.arange(self.max_seq_len_cached, device=x.device, dtype=self.inv_freq.dtype)
+            t = torch.arange(self.max_seq_len_cached, device=x.device, dtype=torch.float32).type(self.inv_freq.dtype)
             freqs = torch.einsum('i,j->ij', t, self.inv_freq)
             # Different from paper, but it uses a different permutation in order to obtain the same calculation
             emb = torch.cat((freqs, freqs), dim=-1).to(x.device)
             # [sx, 1 (b * np), hn]
-            self.cos_cached = emb.cos()[:, None, None, :]
-            self.sin_cached = emb.sin()[:, None, None, :]
+ 	       # Cos and Sin don't work with fp16
+            self.cos_cached = emb.type(torch.float32).cos().type(self.inv_freq.dtype)[:, None, None, :]
+            self.sin_cached = emb.type(torch.float32).sin().type(self.inv_freq.dtype)[:, None, None, :]
         return self.cos_cached[:seq_len, ...], self.sin_cached[:seq_len, ...]
 
 

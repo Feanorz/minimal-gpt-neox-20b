@@ -8,7 +8,7 @@ import minimal20b.model as model20b
 from minimal20b.constants import Args20b, ArgsDummy
 
 
-def create_model(checkpoint_path, use_cache=False, device=torch.device("cuda:0")):
+def create_model(checkpoint_path, use_cache=False, device=torch.device("cpu")):
     """
     To prevent allocation memory on CPU, we initialize on 'meta' and individually
     port each module over to 'device' as we load each state dict.

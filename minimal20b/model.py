@@ -1,19 +1,34 @@
 import torch.nn as nn
 import torch
 import math
+from torch import Tensor, Size
+from typing import Union, List, Tuple
+import torch.nn.init as init
+import numbers
+from torch.multiprocessing import Pool
+
 
 import minimal20b.rotary as rotary
-
+TORCH_DTYPE = torch.float16
 
 class NeoX20BModel(nn.Module):
     def __init__(self, args, use_cache=False, device=None):
         super().__init__()
         self.use_cache = use_cache
         self.embed_in = nn.Embedding(args.vocab_size, args.hidden_size, device=device)
+        
+        # Multiprocessing init of transformer layers
+        layer_inputs = [(args, False) for i in range(args.num_layers)]
+        with Pool(16) as p:
+            transformer_layers = p.starmap(TransformerLayer, layer_inputs)
+            
         self.layer_list = nn.ModuleList([])
-        for layer_i in range(args.num_layers):
-            self.layer_list.append(TransformerLayer(args, use_cache, device=device))
-        self.final_layer_norm = nn.LayerNorm(
+        for transformer_layer in transformer_layers:
+            #l = TransformerLayer(args, use_cache, device=device)
+            self.layer_list.append(transformer_layer)
+        
+
+        self.final_layer_norm = CPULayerNorm(
             args.hidden_size,
             eps=args.layernorm_epsilon,
             device=device,
@@ -66,21 +81,22 @@ class NeoX20BModel(nn.Module):
 
 
 class TransformerLayer(nn.Module):
-    def __init__(self, args, use_cache, device=None):
+    def __init__(self, args, use_cache, device=torch.device("cpu")):
         super().__init__()
         self.use_cache = use_cache
-        self.input_layernorm = nn.LayerNorm(
+        self.input_layernorm = CPULayerNorm(
             args.hidden_size,
             eps=args.layernorm_epsilon,
             device=device,
         )
-        self.post_attention_layernorm = nn.LayerNorm(
+        self.post_attention_layernorm = CPULayerNorm(
             args.hidden_size,
             eps=args.layernorm_epsilon,
             device=device,
         )
         self.attention = SelfAttention(args, self.use_cache, device=device)
         self.mlp = MLP(args)
+        print("Transformer Layer Done")
 
     def forward(self, x, attention_mask, layer_past=None):
         residual = x
@@ -245,7 +261,10 @@ class SelfAttention(nn.Module):
         # attention scores and attention mask [b, np, sq, sk]
         masked_scores = attention_mask_func(attention_scores, attention_mask) \
             if attention_mask is not None else attention_scores
-        attention_probs = torch.nn.Softmax(dim=-1)(masked_scores)
+            
+        # softmax doesn't work with fp16
+        softmax = torch.nn.Softmax(dim=-1)
+        attention_probs = softmax(masked_scores.type(torch.float32)).type(TORCH_DTYPE)
 
         #         # This is actually dropping out entire tokens to attend to, which might
         #         # seem a bit unusual, but is taken from the original Transformer paper.
@@ -330,17 +349,76 @@ def attention_mask_func(attention_scores, ltor_mask):
 
 @torch.jit.script
 def gelu(x):
-    return x * 0.5 * (1.0 + torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x)))
+    val_16 = 0.79788456 * x * (1 + 0.044715 * x * x)
+    val_32 = val_16.type(torch.float32)
+    return x * 0.5 * (1.0 + torch.tanh(val_32).type(torch.float16))
 
 
 # gradient of tanh approximation of gelu
 # gradient of actual gelu is:
 # 0.5 * (1. + torch.erf(x * 0.70710678)) + 0.3989423 * x * torch.exp(-0.5 * x * x)
+# tanh doesn't work with fp32
 @torch.jit.script
 def gelu_back(g, x):
-    tanh_out = torch.tanh(0.79788456 * x * (1 + 0.044715 * x * x))
+    val_16 = 0.79788456 * x * (1 + 0.044715 * x * x)
+    val_32 = val_16.type(torch.float32)
+    tanh_out = torch.tanh(val_32).type(torch.float16)
     # sqrt(2/pi) * 3 * 0.044715 -> 0.1070322243
     ff = 0.5 * x * (
             (1 - tanh_out * tanh_out) * (0.79788456 + 0.1070322243 * x * x)
     ) + 0.5 * (1 + tanh_out)
     return ff * g
+
+
+# Custom Layer norm to support fp16 
+_shape_t = Union[int, List[int], Size]
+class CPULayerNorm(torch.nn.Module):
+    __constants__ = ['normalized_shape', 'eps', 'elementwise_affine']
+    normalized_shape: Tuple[int, ...]
+    eps: float
+    elementwise_affine: bool
+
+    def __init__(self, normalized_shape: _shape_t, eps: float = 1e-5, elementwise_affine: bool = True,
+                 device=None, dtype=None) -> None:
+        factory_kwargs = {'device': device, 'dtype': dtype}
+        super(CPULayerNorm, self).__init__()
+        if isinstance(normalized_shape, numbers.Integral):
+            # mypy error: incompatible types in assignment
+            normalized_shape = (normalized_shape,)  # type: ignore[assignment]
+        self.normalized_shape = tuple(normalized_shape)  # type: ignore[arg-type]
+        self.eps = eps
+        self.elementwise_affine = elementwise_affine
+        if self.elementwise_affine:
+            self.weight = nn.Parameter(torch.empty(self.normalized_shape, **factory_kwargs))
+            self.bias = nn.Parameter(torch.empty(self.normalized_shape, **factory_kwargs))
+        else:
+            self.register_parameter('weight', None)
+            self.register_parameter('bias', None)
+
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
+        if self.elementwise_affine:
+            init.ones_(self.weight)
+            init.zeros_(self.bias)
+
+    # Custom forward function
+    def forward(self, input: Tensor) -> Tensor:
+        my_output = self._custom_layer_norm(input, self.normalized_shape)
+        return my_output
+
+
+    def extra_repr(self) -> str:
+        return '{normalized_shape}, eps={eps}, ' \
+            'elementwise_affine={elementwise_affine}'.format(**self.__dict__)
+
+    # No square root in fp16
+    def _custom_layer_norm(self, in_ten: Tensor, dim: Tuple[int], eps: float = 0.00001) -> torch.Tensor:
+        dim=(-1)
+        in_ten = in_ten.float()
+        mean = torch.mean(in_ten, dim=dim, keepdim=True)
+        var = torch.square(in_ten - mean).mean(dim=dim, keepdim=True)
+        out_ten = (in_ten - mean) / torch.sqrt(var + eps) * self.weight + self.bias
+        return out_ten.type(torch.float16)
+
+
