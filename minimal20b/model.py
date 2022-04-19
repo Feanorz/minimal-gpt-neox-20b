@@ -19,7 +19,7 @@ class NeoX20BModel(nn.Module):
         
         # Multiprocessing init of transformer layers
         layer_inputs = [(args, False) for i in range(args.num_layers)]
-        with Pool(16) as p:
+        with Pool(32) as p:
             transformer_layers = p.starmap(TransformerLayer, layer_inputs)
             
         self.layer_list = nn.ModuleList([])
@@ -112,7 +112,7 @@ class TransformerLayer(nn.Module):
     def forward(self, x, attention_mask, layer_past=None):
         residual = x
         ln_output = self.input_layernorm(x)
-        print("Layernorm Completed")
+        print("Started Attention")
         attention_output, kv_cache = self.attention(
             ln_output,
             attention_mask,
@@ -120,7 +120,7 @@ class TransformerLayer(nn.Module):
         )
         print("Attention Completed")
         post_attn_ln = self.post_attention_layernorm(x)
-        print("Layernorm 2 Completed")
+        print("Started MLP")
         mlp_output = self.mlp(hidden_states=post_attn_ln)
         print("MLP completed")
         output = residual + mlp_output + attention_output
@@ -137,6 +137,7 @@ class SelfAttention(nn.Module):
         self.num_attention_heads = args.num_attention_heads
         self.hidden_size_per_attention_head = args.hidden_size // args.num_attention_heads
         self.rotary_ndims = int(self.hidden_size_per_attention_head * args.rotary_pct)
+
         self.rotary_emb = rotary.RotaryEmbedding(
             self.rotary_ndims,
             base=args.rotary_emb_base,
@@ -157,11 +158,12 @@ class SelfAttention(nn.Module):
     def forward(self, hidden_states, attention_mask, layer_past=None):
         has_layer_past = layer_past is not None and layer_past.numel() > 0
 
+
         # Compute QKV
         # Attention heads [sq, b, h] --> [sq, b, (np * 3 * hn)]
+        
         print(" Start Attention Module")
         qkv = self.query_key_value(hidden_states)
-        
         print(" QKV completed")
 
         # [sq, b, (np * 3 * hn)] --> [sq, b, np, 3 * hn]
@@ -191,17 +193,13 @@ class SelfAttention(nn.Module):
             offset = layer_past[0].shape[0]
             seq_len += offset
             
-        print(" Started Rotary Embedding")
         cos, sin = self.rotary_emb(value_layer, seq_len=seq_len)
         
-        print("  Value embedding finished")
         query_layer, key_layer = rotary.apply_rotary_pos_emb(
             query_rot, key_rot, cos, sin, offset=offset,
         )
-        print("  Q K embedding finished")
         query_layer = torch.cat((query_layer, query_pass), dim=-1)
         key_layer = torch.cat((key_layer, key_pass), dim=-1)
-        print(" Rotart embedding finished")
 
         # Cache QKV values
         if has_layer_past:
@@ -333,6 +331,15 @@ class SelfAttention(nn.Module):
         return context_layer
 
 
+
+@torch.jit.script
+def gelu(x):
+    val_16 = 0.79788456 * x * (1 + 0.044715 * x * x)
+    val_32 = val_16.type(torch.float32)
+    return x * 0.5 * (1.0 + torch.tanh(val_32).type(torch.float16))
+
+
+
 class MLP(nn.Module):
     def __init__(self, args, device=None):
         super().__init__()
@@ -341,30 +348,20 @@ class MLP(nn.Module):
         self.dense_4h_to_h = nn.Linear(ff_dim, args.hidden_size, device=device)
 
     def forward(self, hidden_states):
+        print(hidden_states.shape)
+        weight = self.dense_4h_to_h.weight.tolist()
+        with open("./weights", "w") as f:
+            f.write(str(weight))
+        print("Written")
         intermediate_parallel = self.dense_h_to_4h(hidden_states)
-        intermediate_parallel = bias_gelu_impl(intermediate_parallel)
+        print("   1/3")
+        intermediate_parallel = gelu(intermediate_parallel)
+        print("   2/3")
         output = self.dense_4h_to_h(intermediate_parallel)
+        print("   3/3")
         return output
 
 
-# noinspection PyAbstractClass
-class GeLUFunction(torch.autograd.Function):
-    # noinspection PyMethodOverriding
-    @staticmethod
-    # bias is an optional argument
-    def forward(ctx, inputs):
-        ctx.save_for_backward(inputs)
-        return gelu(inputs)
-
-    # noinspection PyMethodOverriding
-    @staticmethod
-    def backward(ctx, grad_output):
-        inputs = ctx.saved_tensors
-        tmp = gelu_back(grad_output, inputs)
-        return tmp, tmp
-
-
-bias_gelu_impl = GeLUFunction.apply
 
 
 def generate_mask(seq_len):
@@ -377,30 +374,12 @@ def attention_mask_func(attention_scores, ltor_mask):
     return attention_scores
 
 
-@torch.jit.script
-def gelu(x):
-    val_16 = 0.79788456 * x * (1 + 0.044715 * x * x)
-    val_32 = val_16.type(torch.float32)
-    return x * 0.5 * (1.0 + torch.tanh(val_32).type(torch.float16))
 
 
-# gradient of tanh approximation of gelu
-# gradient of actual gelu is:
-# 0.5 * (1. + torch.erf(x * 0.70710678)) + 0.3989423 * x * torch.exp(-0.5 * x * x)
-# tanh doesn't work with fp32
-@torch.jit.script
-def gelu_back(g, x):
-    val_16 = 0.79788456 * x * (1 + 0.044715 * x * x)
-    val_32 = val_16.type(torch.float32)
-    tanh_out = torch.tanh(val_32).type(torch.float16)
-    # sqrt(2/pi) * 3 * 0.044715 -> 0.1070322243
-    ff = 0.5 * x * (
-            (1 - tanh_out * tanh_out) * (0.79788456 + 0.1070322243 * x * x)
-    ) + 0.5 * (1 + tanh_out)
-    return ff * g
 
 
-# Custom Layer norm to support fp16 
+
+# Custom Layer norm to support fp16
 _shape_t = Union[int, List[int], Size]
 class CPULayerNorm(torch.nn.Module):
     __constants__ = ['normalized_shape', 'eps', 'elementwise_affine']
