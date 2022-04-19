@@ -9,7 +9,7 @@ from torch.multiprocessing import Pool
 
 
 import minimal20b.rotary as rotary
-TORCH_DTYPE = torch.float16
+TORCH_DTYPE = torch.float32
 
 class NeoX20BModel(nn.Module):
     def __init__(self, args, use_cache=False, device=None):
