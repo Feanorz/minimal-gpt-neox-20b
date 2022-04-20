@@ -49,6 +49,7 @@ class NeoX20BModel(nn.Module):
         hidden_states = self.pre_transformer_transpose(hidden_states)
 
         for layer_i, layer in enumerate(self.layer_list):
+            print(layer)
             hidden_states, kv_cache = layer(
                 x=hidden_states,
                 attention_mask=attention_mask,

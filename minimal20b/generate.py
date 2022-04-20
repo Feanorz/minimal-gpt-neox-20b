@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from tqdm import auto as tqdm_lib
+import time
 
 
 def greedy_generate(model: nn.Module, input_ids: torch.Tensor, max_seq_len: int, verbose=True, sample_output=True):
@@ -20,12 +21,13 @@ def greedy_generate(model: nn.Module, input_ids: torch.Tensor, max_seq_len: int,
     all_token_ids = input_ids.tolist()
     batch_size = len(all_token_ids)
 
-    if verbose:
-        trange = tqdm_lib.trange(initial_input_length, max_seq_len)
-    else:
-        trange = range(initial_input_length, max_seq_len)
+
+    trange = range(initial_input_length, max_seq_len)
 
     for _ in trange:
+        print()
+        st = time.time()
+
         input_length = current_input_ids.shape[1]
         model_out, layer_past = model(
             current_input_ids,
@@ -44,6 +46,8 @@ def greedy_generate(model: nn.Module, input_ids: torch.Tensor, max_seq_len: int,
             all_token_ids[i].append(greedy_predicted_token_ids[i])
         layer_past_length += input_length
 
+        print("                                             Generation complete, time taken:", time.time() - st)
+        print()
         yield all_token_ids
     #return all_token_ids
 
