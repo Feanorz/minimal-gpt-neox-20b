@@ -122,15 +122,11 @@ class TransformerLayer(nn.Module):
             layer_past=layer_past,
         )
 
-        print("Attention Completed")
-
         post_attn_ln = self.post_attention_layernorm(x)
 
         print("Started MLP")
 
         mlp_output = self.mlp(hidden_states=post_attn_ln)
-
-        print("MLP completed")
 
         output = residual + mlp_output + attention_output
 
@@ -171,12 +167,7 @@ class SelfAttention(nn.Module):
 
         # Compute QKV
         # Attention heads [sq, b, h] --> [sq, b, (np * 3 * hn)]
-        
-        print(" Start Attention Module")
-
         qkv = self.query_key_value(hidden_states)
-
-        print(" QKV completed")
 
         # [sq, b, (np * 3 * hn)] --> [sq, b, np, 3 * hn]
         new_qkv_shape = qkv.size()[:-1] + (
@@ -225,14 +216,9 @@ class SelfAttention(nn.Module):
 
         # Compute attention
         # noinspection PyTypeChecker
-        print(" Starting attention mechanism")
-
         context_layer = self.attention(
             query_layer, key_layer, value_layer, attention_mask
         )
-
-        print(" Attention mechanism complete")
-
         # Reshape outputs
         # [b, np, sq, hn] --> [sq, b, np, hn]
         context_layer = context_layer.permute(2, 0, 1, 3).contiguous()
@@ -247,12 +233,8 @@ class SelfAttention(nn.Module):
         # Output. [sq, b, h]
         # =================
 
-        print(" Started final dense layer")
 
         output = self.dense(context_layer)
-
-        print(" Dense layer finished")
-
         return output, kv_cache
 
     def attention(self, query_layer, key_layer, value_layer, attention_mask):
@@ -365,15 +347,11 @@ class MLP(nn.Module):
         self.dense_4h_to_h = nn.Linear(ff_dim, args.hidden_size, device=device)
 
     def forward(self, hidden_states):
-        print(hidden_states.shape)
-        print(hidden_states)
-        print("   0/3")
+        # print(hidden_states.shape)
+        # print(hidden_states.dtype)
         intermediate_parallel = self.dense_h_to_4h(hidden_states)
-        print("   1/3")
         intermediate_parallel = gelu(intermediate_parallel)
-        print("   2/3")
         output = self.dense_4h_to_h(intermediate_parallel)
-        print("   3/3")
         return output
 
 

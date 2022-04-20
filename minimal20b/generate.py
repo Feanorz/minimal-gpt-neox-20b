@@ -57,7 +57,13 @@ def greedy_generate_text(model: nn.Module,
 
     :return: List of token IDs
     """
+    print("Generating Text")
+    print()
     tokenized = tokenizer.encode(initial_str)
     input_ids = torch.LongTensor([tokenized.ids]).to(device)
     all_token_ids = greedy_generate(model=model, input_ids=input_ids, max_seq_len=max_seq_len, verbose=verbose)
+    print("FINISEHD GENERATION!!!")
+    print("Generated text:")
+    print(tokenizer.decode(all_token_ids[0]))
+
     return tokenizer.decode(all_token_ids[0])
