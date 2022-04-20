@@ -37,7 +37,9 @@ def greedy_generate(model: nn.Module, input_ids: torch.Tensor, max_seq_len: int,
         for i in range(batch_size):
             all_token_ids[i].append(greedy_predicted_token_ids[i])
         layer_past_length += input_length
-    return all_token_ids
+
+        yield all_token_ids
+    #return all_token_ids
 
 
 def greedy_generate_text(model: nn.Module,
@@ -62,8 +64,15 @@ def greedy_generate_text(model: nn.Module,
     tokenized = tokenizer.encode(initial_str)
     input_ids = torch.LongTensor([tokenized.ids]).to(device)
     all_token_ids = greedy_generate(model=model, input_ids=input_ids, max_seq_len=max_seq_len, verbose=verbose)
+
+
     print("FINISEHD GENERATION!!!")
     print("Generated text:")
-    print(tokenizer.decode(all_token_ids[0]))
+    while True:
+        prediction = next(all_token_ids, None)
+        if prediction is None:
+            break
+        print()
+        print(tokenizer.decode(prediction[0]))
 
-    return tokenizer.decode(all_token_ids[0])
+    return tokenizer.decode(prediction[0])
