@@ -34,6 +34,7 @@ def create_model(checkpoint_path, use_cache=False, device=torch.device("cpu")):
         st2 = time.time()
         model.layer_list[layer_i].load_state_dict(state_dict)
         end = time.time()
+        print()
         print("Time to load file:", st2 - st)
         print("Time to load state:", end - st2)
         pbar.update(1)
@@ -41,7 +42,6 @@ def create_model(checkpoint_path, use_cache=False, device=torch.device("cpu")):
     # Load input embedding
     pbar.set_description(f"Loading input embedding")
     in_embedding = torch.load(os.path.join(checkpoint_path, "0_model_states.pt"))
-    print(in_embedding)
     model.embed_in.load_state_dict(in_embedding)
     del in_embedding
     pbar.update(1)

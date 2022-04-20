@@ -3,8 +3,7 @@ import torch.nn as nn
 from tqdm import auto as tqdm_lib
 
 
-def greedy_generate(model: nn.Module, input_ids: torch.Tensor, max_seq_len: int,
-                    verbose=True):
+def greedy_generate(model: nn.Module, input_ids: torch.Tensor, max_seq_len: int, verbose=True, sample_output=True):
     """Generate greedily from 20B.
 
     :param model: NeoX20BModel
@@ -32,7 +31,14 @@ def greedy_generate(model: nn.Module, input_ids: torch.Tensor, max_seq_len: int,
             current_input_ids,
             layer_past=layer_past,
         )
-        greedy_predicted_token_ids = model_out[:, -1].argmax(-1)
+        if sample_output:
+            output_distribution = torch.distributions.Categorical(logits=model_out[:, -1])
+            prediction = output_distribution.sample()
+        else:
+            prediction = model_out[:, -1].argmax(-1)
+
+
+        greedy_predicted_token_ids = prediction
         current_input_ids = greedy_predicted_token_ids[:, None]
         for i in range(batch_size):
             all_token_ids[i].append(greedy_predicted_token_ids[i])
@@ -66,12 +72,13 @@ def greedy_generate_text(model: nn.Module,
     all_token_ids = greedy_generate(model=model, input_ids=input_ids, max_seq_len=max_seq_len, verbose=verbose)
 
 
-
+    last = None
     while True:
         prediction = next(all_token_ids, None)
         if prediction is None:
             break
+        last = prediction
         print()
         print(tokenizer.decode(prediction[0]))
 
-    return tokenizer.decode(prediction[0])
+    return tokenizer.decode(last[0])
