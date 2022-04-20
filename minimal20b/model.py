@@ -9,7 +9,6 @@ from torch.multiprocessing import Pool
 
 
 import minimal20b.rotary as rotary
-TORCH_DTYPE = torch.float32
 
 class NeoX20BModel(nn.Module):
     def __init__(self, args, use_cache=False, device=None):
@@ -26,9 +25,8 @@ class NeoX20BModel(nn.Module):
         for transformer_layer in transformer_layers:
             #l = TransformerLayer(args, use_cache, device=device)
             self.layer_list.append(transformer_layer)
-        
 
-        self.final_layer_norm = CPULayerNorm(
+        self.final_layer_norm = nn.LayerNorm(
             args.hidden_size,
             eps=args.layernorm_epsilon,
             device=device,
@@ -42,7 +40,7 @@ class NeoX20BModel(nn.Module):
 
     def forward(self, x, attention_mask=None, layer_past=None):
         print("Started model forward pass")
-        print()
+
         if attention_mask is None:
             attention_mask = generate_mask(x.shape[1]).to(x.device)
             
@@ -60,9 +58,11 @@ class NeoX20BModel(nn.Module):
         if layer_past is None:
             layer_past = [None] * len(self.layer_list)
         kv_cache_list = []
+
+
         hidden_states = self.embed_in(x)
         hidden_states = self.pre_transformer_transpose(hidden_states)
-        
+
         print("Hidden state generated")
         print()
 
@@ -95,37 +95,48 @@ class TransformerLayer(nn.Module):
     def __init__(self, args, use_cache, device=torch.device("cpu")):
         super().__init__()
         self.use_cache = use_cache
-        self.input_layernorm = CPULayerNorm(
+        self.input_layernorm = nn.LayerNorm(
             args.hidden_size,
             eps=args.layernorm_epsilon,
             device=device,
         )
-        self.post_attention_layernorm = CPULayerNorm(
+        self.post_attention_layernorm = nn.LayerNorm(
             args.hidden_size,
             eps=args.layernorm_epsilon,
             device=device,
         )
         self.attention = SelfAttention(args, self.use_cache, device=device)
         self.mlp = MLP(args)
+
         print("Transformer Layer Done")
 
     def forward(self, x, attention_mask, layer_past=None):
         residual = x
         ln_output = self.input_layernorm(x)
+
         print("Started Attention")
+
         attention_output, kv_cache = self.attention(
             ln_output,
             attention_mask,
             layer_past=layer_past,
         )
+
         print("Attention Completed")
+
         post_attn_ln = self.post_attention_layernorm(x)
+
         print("Started MLP")
+
         mlp_output = self.mlp(hidden_states=post_attn_ln)
+
         print("MLP completed")
+
         output = residual + mlp_output + attention_output
+
         print("Transformer layer finished")
         print()
+
         return output, kv_cache
 
 
@@ -158,12 +169,13 @@ class SelfAttention(nn.Module):
     def forward(self, hidden_states, attention_mask, layer_past=None):
         has_layer_past = layer_past is not None and layer_past.numel() > 0
 
-
         # Compute QKV
         # Attention heads [sq, b, h] --> [sq, b, (np * 3 * hn)]
         
         print(" Start Attention Module")
+
         qkv = self.query_key_value(hidden_states)
+
         print(" QKV completed")
 
         # [sq, b, (np * 3 * hn)] --> [sq, b, np, 3 * hn]
@@ -214,9 +226,11 @@ class SelfAttention(nn.Module):
         # Compute attention
         # noinspection PyTypeChecker
         print(" Starting attention mechanism")
+
         context_layer = self.attention(
             query_layer, key_layer, value_layer, attention_mask
         )
+
         print(" Attention mechanism complete")
 
         # Reshape outputs
@@ -232,8 +246,11 @@ class SelfAttention(nn.Module):
         # =================
         # Output. [sq, b, h]
         # =================
+
         print(" Started final dense layer")
+
         output = self.dense(context_layer)
+
         print(" Dense layer finished")
 
         return output, kv_cache
@@ -292,7 +309,7 @@ class SelfAttention(nn.Module):
             
         # softmax doesn't work with fp16
         softmax = torch.nn.Softmax(dim=-1)
-        attention_probs = softmax(masked_scores.type(torch.float32)).type(TORCH_DTYPE)
+        attention_probs = softmax(masked_scores)
 
         #         # This is actually dropping out entire tokens to attend to, which might
         #         # seem a bit unusual, but is taken from the original Transformer paper.
@@ -349,10 +366,8 @@ class MLP(nn.Module):
 
     def forward(self, hidden_states):
         print(hidden_states.shape)
-        weight = self.dense_4h_to_h.weight.tolist()
-        with open("./weights", "w") as f:
-            f.write(str(weight))
-        print("Written")
+        print(hidden_states)
+        print("   0/3")
         intermediate_parallel = self.dense_h_to_4h(hidden_states)
         print("   1/3")
         intermediate_parallel = gelu(intermediate_parallel)
@@ -360,8 +375,6 @@ class MLP(nn.Module):
         output = self.dense_4h_to_h(intermediate_parallel)
         print("   3/3")
         return output
-
-
 
 
 def generate_mask(seq_len):
@@ -373,61 +386,5 @@ def attention_mask_func(attention_scores, ltor_mask):
     attention_scores.masked_fill_(~ltor_mask, -10000.0)
     return attention_scores
 
-
-
-
-
-
-
-# Custom Layer norm to support fp16
-_shape_t = Union[int, List[int], Size]
-class CPULayerNorm(torch.nn.Module):
-    __constants__ = ['normalized_shape', 'eps', 'elementwise_affine']
-    normalized_shape: Tuple[int, ...]
-    eps: float
-    elementwise_affine: bool
-
-    def __init__(self, normalized_shape: _shape_t, eps: float = 1e-5, elementwise_affine: bool = True,
-                 device=None, dtype=None) -> None:
-        factory_kwargs = {'device': device, 'dtype': dtype}
-        super(CPULayerNorm, self).__init__()
-        if isinstance(normalized_shape, numbers.Integral):
-            # mypy error: incompatible types in assignment
-            normalized_shape = (normalized_shape,)  # type: ignore[assignment]
-        self.normalized_shape = tuple(normalized_shape)  # type: ignore[arg-type]
-        self.eps = eps
-        self.elementwise_affine = elementwise_affine
-        if self.elementwise_affine:
-            self.weight = nn.Parameter(torch.empty(self.normalized_shape, **factory_kwargs))
-            self.bias = nn.Parameter(torch.empty(self.normalized_shape, **factory_kwargs))
-        else:
-            self.register_parameter('weight', None)
-            self.register_parameter('bias', None)
-
-        self.reset_parameters()
-
-    def reset_parameters(self) -> None:
-        if self.elementwise_affine:
-            init.ones_(self.weight)
-            init.zeros_(self.bias)
-
-    # Custom forward function
-    def forward(self, input: Tensor) -> Tensor:
-        my_output = self._custom_layer_norm(input, self.normalized_shape)
-        return my_output
-
-
-    def extra_repr(self) -> str:
-        return '{normalized_shape}, eps={eps}, ' \
-            'elementwise_affine={elementwise_affine}'.format(**self.__dict__)
-
-    # No square root in fp16
-    def _custom_layer_norm(self, in_ten: Tensor, dim: Tuple[int], eps: float = 0.00001) -> torch.Tensor:
-        dim=(-1)
-        in_ten = in_ten.float()
-        mean = torch.mean(in_ten, dim=dim, keepdim=True)
-        var = torch.square(in_ten - mean).mean(dim=dim, keepdim=True)
-        out_ten = (in_ten - mean) / torch.sqrt(var + eps) * self.weight + self.bias
-        return out_ten.type(torch.float16)
 
 

@@ -12,5 +12,5 @@ with torch.inference_mode():
     minimal20b.greedy_generate_text(
         model, tokenizer,
         "GPTNeoX20B is a 20B-parameter autoregressive Transformer model developed by EleutherAI.",
-        max_seq_len=100,
+        max_seq_len=25,
     )

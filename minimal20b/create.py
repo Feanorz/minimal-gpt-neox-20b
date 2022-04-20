@@ -7,7 +7,7 @@ import tokenizers
 import minimal20b.model as model20b
 from minimal20b.constants import Args20b, ArgsDummy
 
-
+DTYPE = torch.float32
 def create_model(checkpoint_path, use_cache=False, device=torch.device("cpu")):
     """
     To prevent allocation memory on CPU, we initialize on 'meta' and individually
@@ -21,8 +21,8 @@ def create_model(checkpoint_path, use_cache=False, device=torch.device("cpu")):
     # Instantiate model
     pbar = tqdm_lib.tqdm(total=48)
     pbar.set_description("Instantiating model (~1 min)")
-    model = model20b.NeoX20BModel(Args20b, use_cache=use_cache, device="meta")
-    model = model.half().to_empty(device=device)
+    model = model20b.NeoX20BModel(Args20b, use_cache=use_cache, device="cpu")
+    model = model.to_empty(device=device)
     pbar.update(1)
 
     # Load transformer layers
@@ -33,12 +33,9 @@ def create_model(checkpoint_path, use_cache=False, device=torch.device("cpu")):
         loaded_tp1 = torch.load(os.path.join(checkpoint_path, filename_tp1))
         loaded_tp2 = torch.load(os.path.join(checkpoint_path, filename_tp2))
         state_dict = {}
-        # Good
+
         # Keys where we concatenate on the second dim
-        for key in [
-            "attention.dense.weight",
-            "mlp.dense_4h_to_h.weight",
-        ]:
+        for key in ["attention.dense.weight", "mlp.dense_4h_to_h.weight"]:
             state_dict[key] = torch.cat([loaded_tp1[key], loaded_tp2[key]], dim=1)
         # Mapping individual split weights to custom split implementations
         # Layer Norms
@@ -79,6 +76,11 @@ def create_model(checkpoint_path, use_cache=False, device=torch.device("cpu")):
         )
         # Just take one
         state_dict["attention.rotary_emb.inv_freq"] = loaded_tp1["attention.rotary_emb.inv_freq"]
+
+        # Cast everything to fp32 since fp16 is slow on CPU
+        for name, state in state_dict.items():
+            state_dict[name] = state.type(DTYPE)
+
         model.layer_list[layer_i].load_state_dict(state_dict)
         del loaded_tp1
         del loaded_tp2
@@ -89,9 +91,9 @@ def create_model(checkpoint_path, use_cache=False, device=torch.device("cpu")):
     loaded_tp1 = torch.load(os.path.join(checkpoint_path, "layer_00-model_00-model_states.pt"))
     loaded_tp2 = torch.load(os.path.join(checkpoint_path, "layer_00-model_01-model_states.pt"))
     model.embed_in.load_state_dict({"weight": torch.cat([
-        loaded_tp1["word_embeddings.weight"],
-        loaded_tp2["word_embeddings.weight"],
-    ], dim=0)})
+                                                        loaded_tp1["word_embeddings.weight"].type(DTYPE),
+                                                        loaded_tp2["word_embeddings.weight"].type(DTYPE),
+                                                        ], dim=0)})
     del loaded_tp1
     del loaded_tp2
     pbar.update(1)
@@ -101,8 +103,8 @@ def create_model(checkpoint_path, use_cache=False, device=torch.device("cpu")):
     loaded_tp1 = torch.load(os.path.join(checkpoint_path, "layer_47-model_00-model_states.pt"))
     loaded_tp2 = torch.load(os.path.join(checkpoint_path, "layer_47-model_01-model_states.pt"))
     model.final_layer_norm.load_state_dict({
-        "weight": (loaded_tp1["norm.weight"] + loaded_tp2["norm.weight"])/2,
-        "bias": (loaded_tp1["norm.bias"] + loaded_tp2["norm.bias"])/2,
+        "weight": (loaded_tp1["norm.weight"].type(DTYPE) + loaded_tp2["norm.weight"].type(DTYPE))/2,
+        "bias": (loaded_tp1["norm.bias"].type(DTYPE) + loaded_tp2["norm.bias"].type(DTYPE))/2,
     })
     del loaded_tp1
     del loaded_tp2
@@ -114,8 +116,8 @@ def create_model(checkpoint_path, use_cache=False, device=torch.device("cpu")):
     loaded_tp2 = torch.load(os.path.join(checkpoint_path, "layer_48-model_01-model_states.pt"))
     model.logits_out.load_state_dict({
         "weight": torch.cat([
-            loaded_tp1["final_linear.weight"],
-            loaded_tp2["final_linear.weight"],
+            loaded_tp1["final_linear.weight"].type(DTYPE),
+            loaded_tp2["final_linear.weight"].type(DTYPE),
         ], dim=0),
     })
     del loaded_tp1
