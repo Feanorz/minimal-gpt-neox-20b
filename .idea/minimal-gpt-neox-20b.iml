@@ -5,6 +5,7 @@
     <orderEntry type="jdk" jdkName="Azure" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
     <orderEntry type="module" module-name="SpinningUp" />
+    <orderEntry type="module" module-name="Vast" />
   </component>
   <component name="PyDocumentationSettings">
     <option name="format" value="PLAIN" />

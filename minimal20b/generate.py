@@ -66,8 +66,7 @@ def greedy_generate_text(model: nn.Module,
     all_token_ids = greedy_generate(model=model, input_ids=input_ids, max_seq_len=max_seq_len, verbose=verbose)
 
 
-    print("FINISEHD GENERATION!!!")
-    print("Generated text:")
+
     while True:
         prediction = next(all_token_ids, None)
         if prediction is None:

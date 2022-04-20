@@ -1,5 +1,6 @@
 import os
 from tqdm import auto as tqdm_lib
+import time
 
 import torch
 import tokenizers
@@ -28,104 +29,53 @@ def create_model(checkpoint_path, use_cache=False, device=torch.device("cpu")):
     # Load transformer layers
     for layer_i in range(Args20b.num_layers):
         pbar.set_description(f"Loading layer {layer_i}")
-        filename_tp1 = f"layer_{layer_i + 2:02d}-model_00-model_states.pt"
-        filename_tp2 = f"layer_{layer_i + 2:02d}-model_01-model_states.pt"
-        loaded_tp1 = torch.load(os.path.join(checkpoint_path, filename_tp1))
-        loaded_tp2 = torch.load(os.path.join(checkpoint_path, filename_tp2))
-        state_dict = {}
-
-        # Keys where we concatenate on the second dim
-        for key in ["attention.dense.weight", "mlp.dense_4h_to_h.weight"]:
-            state_dict[key] = torch.cat([loaded_tp1[key], loaded_tp2[key]], dim=1)
-        # Mapping individual split weights to custom split implementations
-        # Layer Norms
-        # Choose 1
-        state_dict["input_layernorm.weight"] = (
-            loaded_tp1["input_layernorm.weight"] + loaded_tp2["input_layernorm.weight"]) / 2
-        state_dict["input_layernorm.bias"] = (
-            loaded_tp1["input_layernorm.bias"] + loaded_tp2["input_layernorm.bias"]) / 2
-        state_dict["post_attention_layernorm.weight"] = (
-            loaded_tp1["post_attention_layernorm.weight"] + loaded_tp2["post_attention_layernorm.weight"]) / 2
-        state_dict["post_attention_layernorm.bias"] = (
-            loaded_tp1["post_attention_layernorm.bias"] + loaded_tp2["post_attention_layernorm.bias"]) / 2
-        # LinearWithTPMerge
-        state_dict["mlp.dense_h_to_4h.weight"] = torch.cat([
-            loaded_tp1["mlp.dense_h_to_4h.weight"],
-            loaded_tp2["mlp.dense_h_to_4h.weight"],
-        ], dim=0)
-        state_dict["mlp.dense_h_to_4h.bias"] = torch.cat([
-            loaded_tp1["mlp.dense_h_to_4h.bias"],
-            loaded_tp2["mlp.dense_h_to_4h.bias"],
-        ], dim=0)
-        state_dict["attention.query_key_value.weight"] = torch.cat([
-            loaded_tp1["attention.query_key_value.weight"],
-            loaded_tp2["attention.query_key_value.weight"],
-        ], dim=0)
-        state_dict["attention.query_key_value.bias"] = torch.cat([
-            loaded_tp1["attention.query_key_value.bias"],
-            loaded_tp2["attention.query_key_value.bias"],
-        ], dim=0)
-        # LinearWithTPSplitBias
-        state_dict["mlp.dense_4h_to_h.bias"] = (
-            loaded_tp1["mlp.dense_4h_to_h.bias"]
-            + loaded_tp2["mlp.dense_4h_to_h.bias"]
-        )
-        state_dict["attention.dense.bias"] = (
-            loaded_tp1["attention.dense.bias"]
-            + loaded_tp2["attention.dense.bias"]
-        )
-        # Just take one
-        state_dict["attention.rotary_emb.inv_freq"] = loaded_tp1["attention.rotary_emb.inv_freq"]
-
-        # Cast everything to fp32 since fp16 is slow on CPU
-        for name, state in state_dict.items():
-            state_dict[name] = state.type(DTYPE)
-
+        st = time.time()
+        state_dict = load_layer(checkpoint_path, layer_i, dtype=DTYPE)
+        st2 = time.time()
         model.layer_list[layer_i].load_state_dict(state_dict)
-        del loaded_tp1
-        del loaded_tp2
+        end = time.time()
+        print("Time to load file:", st2 - st)
+        print("Time to load state:", end - st2)
         pbar.update(1)
 
     # Load input embedding
     pbar.set_description(f"Loading input embedding")
-    loaded_tp1 = torch.load(os.path.join(checkpoint_path, "layer_00-model_00-model_states.pt"))
-    loaded_tp2 = torch.load(os.path.join(checkpoint_path, "layer_00-model_01-model_states.pt"))
-    model.embed_in.load_state_dict({"weight": torch.cat([
-                                                        loaded_tp1["word_embeddings.weight"].type(DTYPE),
-                                                        loaded_tp2["word_embeddings.weight"].type(DTYPE),
-                                                        ], dim=0)})
-    del loaded_tp1
-    del loaded_tp2
+    in_embedding = torch.load(os.path.join(checkpoint_path, "0_model_states.pt"))
+    print(in_embedding)
+    model.embed_in.load_state_dict(in_embedding)
+    del in_embedding
     pbar.update(1)
 
     # Load final layer norm
     pbar.set_description(f"Loading final layer norm")
-    loaded_tp1 = torch.load(os.path.join(checkpoint_path, "layer_47-model_00-model_states.pt"))
-    loaded_tp2 = torch.load(os.path.join(checkpoint_path, "layer_47-model_01-model_states.pt"))
-    model.final_layer_norm.load_state_dict({
-        "weight": (loaded_tp1["norm.weight"].type(DTYPE) + loaded_tp2["norm.weight"].type(DTYPE))/2,
-        "bias": (loaded_tp1["norm.bias"].type(DTYPE) + loaded_tp2["norm.bias"].type(DTYPE))/2,
-    })
-    del loaded_tp1
-    del loaded_tp2
+    final_layer_norm = torch.load(os.path.join(checkpoint_path, "47_model_states.pt"))
+    model.final_layer_norm.load_state_dict(final_layer_norm)
+    del final_layer_norm
     pbar.update(1)
 
     # Load output embedding
     pbar.set_description(f"Loading output embedding")
-    loaded_tp1 = torch.load(os.path.join(checkpoint_path, "layer_48-model_00-model_states.pt"))
-    loaded_tp2 = torch.load(os.path.join(checkpoint_path, "layer_48-model_01-model_states.pt"))
-    model.logits_out.load_state_dict({
-        "weight": torch.cat([
-            loaded_tp1["final_linear.weight"].type(DTYPE),
-            loaded_tp2["final_linear.weight"].type(DTYPE),
-        ], dim=0),
-    })
-    del loaded_tp1
-    del loaded_tp2
+    logits_out = torch.load(os.path.join(checkpoint_path, "48_model_states.pt"))
+    model.logits_out.load_state_dict(logits_out)
+    del logits_out
     pbar.update(1)
     pbar.set_description("Done.")
 
     return model
+
+
+def load_layer(checkpoint_path, layer_i, dtype=torch.float32):
+
+    filename = f"{layer_i}.pt"
+    loaded = torch.load(os.path.join(checkpoint_path, filename))
+
+    # # Convert to fp32
+    # for name, value in loaded.items():
+    #     loaded[name] = value.type(dtype)
+
+    return loaded
+
+
 
 
 def create_dummy_model(use_cache=False, device=torch.device("cpu")):
