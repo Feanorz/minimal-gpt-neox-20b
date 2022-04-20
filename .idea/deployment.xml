@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="PublishConfigData" autoUpload="Always" serverName="azureuser@20.90.157.17:22" remoteFilesAllowedToDisappearOnAutoupload="false" autoUploadExternalChanges="true">
+    <serverData>
+      <paths name="azureuser@20.90.157.17:22">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/mnt/ssd/minimal-gpt-neox-20b" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="maccy@moriamine.ddns.net:2269">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/Documents/ReinforcementLearning" local="/mnt/storagedisk/SpinningUp" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+    </serverData>
+    <option name="myAutoUpload" value="ALWAYS" />
+  </component>
+</project>
