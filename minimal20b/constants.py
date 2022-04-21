@@ -6,6 +6,7 @@ class Args20b:
     rotary_emb_base = 10000
     layernorm_epsilon = 1e-5
     num_layers = 44
+    half_precision = True
 
 
 class ArgsDummy:

@@ -72,7 +72,7 @@ def greedy_generate_text(model: nn.Module,
     print("Generating Text")
     print()
     tokenized = tokenizer.encode(initial_str)
-    input_ids = torch.LongTensor([tokenized.ids]).to(device)
+    input_ids = torch.LongTensor([tokenized.ids, tokenized.ids]).to(device)
     all_token_ids = greedy_generate(model=model, input_ids=input_ids, max_seq_len=max_seq_len, verbose=verbose)
 
 

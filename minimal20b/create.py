@@ -1,6 +1,7 @@
 import os
 from tqdm import auto as tqdm_lib
 import time
+from torch.multiprocessing import Pool
 
 import torch
 import tokenizers
@@ -23,7 +24,7 @@ def create_model(checkpoint_path, use_cache=False, device=torch.device("cpu")):
     pbar = tqdm_lib.tqdm(total=48)
     pbar.set_description("Instantiating model (~1 min)")
     model = model20b.NeoX20BModel(Args20b, use_cache=use_cache, device="cpu")
-    model = model.to_empty(device=device)
+    model = model.half().to_empty(device=device)
     pbar.update(1)
 
     # Load transformer layers
@@ -37,6 +38,7 @@ def create_model(checkpoint_path, use_cache=False, device=torch.device("cpu")):
         print()
         print("Time to load file:", st2 - st)
         print("Time to load state:", end - st2)
+        del state_dict
         pbar.update(1)
 
     # Load input embedding
@@ -61,7 +63,15 @@ def create_model(checkpoint_path, use_cache=False, device=torch.device("cpu")):
     pbar.update(1)
     pbar.set_description("Done.")
 
+    for param in model.parameters():
+        param.requires_grad = False
+
     return model
+
+
+def float_fun(x):
+    x.float()
+    return None
 
 
 def load_layer(checkpoint_path, layer_i, dtype=torch.float32):

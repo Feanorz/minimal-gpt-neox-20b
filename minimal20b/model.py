@@ -2,15 +2,19 @@ import torch.nn as nn
 import torch
 import math
 from torch.multiprocessing import Pool
-
+import time
+import copy
 import minimal20b.rotary as rotary
-
+import gc
 
 class NeoX20BModel(nn.Module):
     def __init__(self, args, use_cache=False, device=None):
         super().__init__()
+        self.half_precision = args.half_precision
+
         self.use_cache = use_cache
         self.embed_in = nn.Embedding(args.vocab_size, args.hidden_size, device=device)
+
 
         # Multiprocessing init of transformer layers
         layer_inputs = [(args, use_cache) for _ in range(args.num_layers)]
@@ -19,6 +23,7 @@ class NeoX20BModel(nn.Module):
         self.layer_list = nn.ModuleList([])
         for transformer_layer in transformer_layers:
             self.layer_list.append(transformer_layer)
+
 
         self.final_layer_norm = nn.LayerNorm(
             args.hidden_size,
@@ -33,6 +38,13 @@ class NeoX20BModel(nn.Module):
         )
 
     def forward(self, x, attention_mask=None, layer_past=None):
+
+        # Set input and output layers to float32
+        if self.half_precision:
+            self.embed_in.float()
+            self.final_layer_norm.float()
+            self.logits_out.float()
+
         if attention_mask is None:
             attention_mask = generate_mask(x.shape[1]).to(x.device)
         if self.use_cache:
@@ -49,13 +61,20 @@ class NeoX20BModel(nn.Module):
         hidden_states = self.pre_transformer_transpose(hidden_states)
 
         for layer_i, layer in enumerate(self.layer_list):
-            print(layer)
+
+            if self.half_precision:
+                layer.float()
+
             hidden_states, kv_cache = layer(
                 x=hidden_states,
                 attention_mask=attention_mask,
                 layer_past=layer_past[layer_i],
             )
             kv_cache_list.append(kv_cache)
+
+            if self.half_precision:
+                layer.half()
+
         hidden_states = self.post_transformer_transpose(hidden_states)
         hidden_states = self.final_layer_norm(hidden_states)
         logits = self.logits_out(hidden_states)
