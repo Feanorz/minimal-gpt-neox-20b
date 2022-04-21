@@ -109,6 +109,7 @@ class TransformerLayer(nn.Module):
         )
         self.attention = SelfAttention(args, self.use_cache, device=device)
         self.mlp = MLP(args)
+        print("Transformer Layer Completed")
 
     def forward(self, x, attention_mask, layer_past=None):
         residual = x

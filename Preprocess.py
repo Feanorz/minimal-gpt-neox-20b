@@ -91,3 +91,6 @@ out = {
     ], dim=0),
 }
 torch.save(out, f'{checkpoint_path}/compressed/48_model_states.pt')
+
+
+print("All DOne")

@@ -2,12 +2,12 @@ import minimal20b
 import torch
 print("Current threads:")
 print("   ", torch.get_num_threads())
-torch.set_num_threads(32)
+torch.set_num_threads(16)
 print("New Threads:")
 print("   ", torch.get_num_threads())
 
 model = minimal20b.create_model(
-    "/mnt/global_step150000/compressed",
+    "/mnt/compressed",
     use_cache=True,
     device="cpu",
 )
