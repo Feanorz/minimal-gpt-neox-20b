@@ -9,7 +9,6 @@ import tokenizers
 import minimal20b.model as model20b
 from minimal20b.constants import Args20b, ArgsDummy
 
-DTYPE = torch.float32
 def create_model(checkpoint_path, use_cache=False, device=torch.device("cpu")):
     """
     To prevent allocation memory on CPU, we initialize on 'meta' and individually
@@ -24,14 +23,17 @@ def create_model(checkpoint_path, use_cache=False, device=torch.device("cpu")):
     pbar = tqdm_lib.tqdm(total=48)
     pbar.set_description("Instantiating model (~1 min)")
     model = model20b.NeoX20BModel(Args20b, use_cache=use_cache, device="cpu")
-    model = model.half().to_empty(device=device)
+    if Args20b.half_precision:
+        model = model.half().to_empty(device=device)
+    else:
+        model = model.to_empty(device=device)
     pbar.update(1)
 
     # Load transformer layers
     for layer_i in range(Args20b.num_layers):
         pbar.set_description(f"Loading layer {layer_i}")
         st = time.time()
-        state_dict = load_layer(checkpoint_path, layer_i, dtype=DTYPE)
+        state_dict = load_layer(checkpoint_path, layer_i)
         st2 = time.time()
         model.layer_list[layer_i].load_state_dict(state_dict)
         end = time.time()

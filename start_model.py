@@ -7,7 +7,7 @@ print("New Threads:")
 print("   ", torch.get_num_threads())
 
 model = minimal20b.create_model(
-    "/mnt/ssd/global_step150000/compressed",
+    "/mnt/global_step150000/compressed",
     use_cache=True,
     device="cpu",
 )
@@ -15,7 +15,7 @@ print("Model created")
 print("________________________")
 
 tokenizer = minimal20b.create_tokenizer(
-    "/mnt/ssd/20B_tokenizer.json",
+    "/mnt/20B_tokenizer.json",
 )
 
 print("Doing Inference")

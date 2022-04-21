@@ -20,6 +20,7 @@ class NeoX20BModel(nn.Module):
         layer_inputs = [(args, use_cache) for _ in range(args.num_layers)]
         with Pool(torch.get_num_threads()) as p:
             transformer_layers = p.starmap(TransformerLayer, layer_inputs)
+
         self.layer_list = nn.ModuleList([])
         for transformer_layer in transformer_layers:
             self.layer_list.append(transformer_layer)
