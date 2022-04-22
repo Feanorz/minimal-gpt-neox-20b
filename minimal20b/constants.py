@@ -6,7 +6,7 @@ class Args20b:
     rotary_emb_base = 10000
     layernorm_epsilon = 1e-5
     num_layers = 44
-    half_precision = False
+    half_precision = True
     start_cpu_threads = 32
     gpu_layers = 0
 

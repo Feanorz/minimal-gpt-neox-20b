@@ -2,42 +2,32 @@ import torch.nn as nn
 import torch
 import time
 from torch.multiprocessing import Process, Queue
+import copy
+
+class TestClass(torch.nn.Module):
+
+    def __init__(self):
+        super(TestClass, self).__init__()
+        self.param1 = nn.Linear(100, 100)
 
 
-# Maps map_fn, onto args, n times
-def q_map(map_fn, n, args):
-    procs = []
-    for i in range(n):
-        # Make sure main process has enough time to load back output before destroying this function
-        mp_queue, sync_queue = Queue(), Queue()
-
-        proc = Process(target=execute_fun, args=(mp_queue, sync_queue, map_fn, args))
-        proc.start()
-
-        procs.append((proc, mp_queue, sync_queue))
-
-    results = []
-    for proc, mp_queue, sync_queue in procs:
-        results.append(mp_queue.get())
-
-        sync_queue.put(1)
-
-    return results
+    def forward(self, x):
+        return self.param1(x)
 
 
-def execute_fun(mp_queue, sync_queue, map_fn, args):
-    output = map_fn(*args)
-    mp_queue.put(output)
-    # Close function
-    sync_queue.get()
+testclass = TestClass()
 
+for param in testclass.state_dict():
+    print(param)
 
+saved = copy.deepcopy(testclass.state_dict())
+testclass.param1.weight = None
 
-class myClass:
-    def __init__(self, a, b):
-        print(a + b)
+print("New parameters")
+for param in testclass.state_dict():
+    print(param)
 
-
-
-x = q_map(myClass, 5, (5, 6))
+x = testclass.load_state_dict(saved)
 print(x)
+for param in testclass.state_dict():
+    print(param)

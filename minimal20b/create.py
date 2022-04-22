@@ -1,3 +1,5 @@
+import copy
+
 import os
 from tqdm import auto as tqdm_lib
 import time
@@ -33,6 +35,7 @@ def create_model(checkpoint_path, use_cache=False, device=torch.device("cpu")):
     # Move first n layers to GPU.
     cpu = torch.device("cpu")
     gpu = torch.device("cuda:0")
+
     for i, layer in enumerate(model.layer_list):
         if i < Args20b.gpu_layers:
             layer.to(gpu).half()
@@ -40,43 +43,43 @@ def create_model(checkpoint_path, use_cache=False, device=torch.device("cpu")):
             layer.to(cpu).float()
 
 
-    # Load transformer layers
-    for layer_i in range(Args20b.num_layers):
-        pbar.set_description(f"Loading layer {layer_i}")
-        st = time.time()
-        state_dict = load_layer(checkpoint_path, layer_i)
-        st2 = time.time()
-        model.layer_list[layer_i].load_state_dict(state_dict)
-        torch.cuda.synchronize(device=torch.device("cuda:0"))
-        end = time.time()
-
-        print()
-        print("Time to load file:", st2 - st)
-        print("Time to load state:", end - st2)
-        del state_dict
-        pbar.update(1)
-
-    # Load input embedding
-    pbar.set_description(f"Loading input embedding")
-    in_embedding = torch.load(os.path.join(checkpoint_path, "0_model_states.pt"))
-    model.embed_in.load_state_dict(in_embedding)
-    del in_embedding
-    pbar.update(1)
-
-    # Load final layer norm
-    pbar.set_description(f"Loading final layer norm")
-    final_layer_norm = torch.load(os.path.join(checkpoint_path, "47_model_states.pt"))
-    model.final_layer_norm.load_state_dict(final_layer_norm)
-    del final_layer_norm
-    pbar.update(1)
-
-    # Load output embedding
-    pbar.set_description(f"Loading output embedding")
-    logits_out = torch.load(os.path.join(checkpoint_path, "48_model_states.pt"))
-    model.logits_out.load_state_dict(logits_out)
-    del logits_out
-    pbar.update(1)
-    pbar.set_description("Done.")
+    # # Load transformer layers
+    # for layer_i in range(Args20b.num_layers):
+    #     pbar.set_description(f"Loading layer {layer_i}")
+    #     st = time.time()
+    #     state_dict = load_layer(checkpoint_path, layer_i)
+    #     st2 = time.time()
+    #     model.layer_list[layer_i].load_state_dict(state_dict)
+    #     torch.cuda.synchronize(device=torch.device("cuda:0"))
+    #     end = time.time()
+    #
+    #     print()
+    #     print("Time to load file:", st2 - st)
+    #     print("Time to load state:", end - st2)
+    #     del state_dict
+    #     pbar.update(1)
+    #
+    # # Load input embedding
+    # pbar.set_description(f"Loading input embedding")
+    # in_embedding = torch.load(os.path.join(checkpoint_path, "0_model_states.pt"))
+    # model.embed_in.load_state_dict(in_embedding)
+    # del in_embedding
+    # pbar.update(1)
+    #
+    # # Load final layer norm
+    # pbar.set_description(f"Loading final layer norm")
+    # final_layer_norm = torch.load(os.path.join(checkpoint_path, "47_model_states.pt"))
+    # model.final_layer_norm.load_state_dict(final_layer_norm)
+    # del final_layer_norm
+    # pbar.update(1)
+    #
+    # # Load output embedding
+    # pbar.set_description(f"Loading output embedding")
+    # logits_out = torch.load(os.path.join(checkpoint_path, "48_model_states.pt"))
+    # model.logits_out.load_state_dict(logits_out)
+    # del logits_out
+    # pbar.update(1)
+    # pbar.set_description("Done.")
 
     # Always have to be float, regardless of main model status
     if Args20b.half_precision:
@@ -87,6 +90,54 @@ def create_model(checkpoint_path, use_cache=False, device=torch.device("cpu")):
     for param in model.parameters():
         param.requires_grad = False
 
+
+    for layer in model.layer_list:
+        layer.half()
+
+    for i, layer in enumerate(model.layer_list):
+        print()
+        print()
+
+
+        #layer.half()
+
+        st = time.time()
+        state = {}
+        for k, v in layer.state_dict().items():
+            state[k] = v.clone()
+            print(v.dtype)
+        #state = copy.deepcopy(layer.state_dict())
+        print("Time to copy layer:", time.time() - st)
+
+
+        # for k, v in layer.state_dict().items():
+        #     print(v)
+        layer.to_empty(device=torch.device("cpu"))
+
+        layer.float()
+
+        st = time.time()
+        layer.load_state_dict(state)
+        print("Time to load in state dict:", time.time() - st)
+
+
+        st = time.time()
+        layer.to_empty(device=torch.device("cpu"))
+        print("Time to empty player:", time.time() - st)
+
+
+        print()
+
+        layer.half()
+        st = time.time()
+        layer.float()
+        print("Time to cast to float", time.time() - st)
+        st = time.time()
+        layer.half()
+        print("Time to cast to half", time.time() - st)
+
+
+    assert 1 == 2
     return model
 
 
@@ -95,7 +146,7 @@ def float_fun(x):
     return None
 
 
-def load_layer(checkpoint_path, layer_i, dtype=torch.float32):
+def load_layer(checkpoint_path, layer_i):
 
     filename = f"{layer_i}.pt"
     loaded = torch.load(os.path.join(checkpoint_path, filename))

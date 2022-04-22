@@ -378,10 +378,15 @@ class MLP(nn.Module):
         self.dense_4h_to_h = nn.Linear(ff_dim, args.hidden_size, device=device)
 
     def forward(self, hidden_states):
+        print(hidden_states.device)
+        while True:
+            st = time.time()
+            intermediate_parallel = self.dense_h_to_4h(hidden_states)
+            intermediate_parallel = gelu(intermediate_parallel)
+            output = self.dense_4h_to_h(intermediate_parallel)
 
-        intermediate_parallel = self.dense_h_to_4h(hidden_states)
-        intermediate_parallel = gelu(intermediate_parallel)
-        output = self.dense_4h_to_h(intermediate_parallel)
+            print()
+            print(time.time() - st)
         return output
 
 
