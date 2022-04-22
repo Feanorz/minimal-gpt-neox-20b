@@ -2,12 +2,12 @@ import minimal20b
 import torch
 print("Current threads:")
 print("   ", torch.get_num_threads())
-torch.set_num_threads(16)
+torch.set_num_threads(32)
 print("New Threads:")
 print("   ", torch.get_num_threads())
 
 model = minimal20b.create_model(
-    "/mnt/compressed",
+    "/root/20B_checkpoints/global_step150000/compressed",
     use_cache=True,
     device="cpu",
 )
@@ -15,7 +15,7 @@ print("Model created")
 print("________________________")
 
 tokenizer = minimal20b.create_tokenizer(
-    "/mnt/20B_tokenizer.json",
+    "/root/20B_checkpoints/20B_tokenizer.json",
 )
 
 print("Doing Inference")

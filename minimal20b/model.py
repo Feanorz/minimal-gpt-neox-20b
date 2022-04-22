@@ -1,11 +1,48 @@
 import torch.nn as nn
 import torch
 import math
-from torch.multiprocessing import Pool
+from torch.multiprocessing import Process, Queue
 import time
 import copy
 import minimal20b.rotary as rotary
 import gc
+
+
+# Maps map_fn, onto args, n times
+# Watch out for:
+#   Exiting process too quickly before tensor has been copied out
+#   Shared memory usage too high
+def q_map(map_fn, n, args):
+    procs = []
+    for i in range(n):
+        # Make sure main process has enough time to load back output before destroying this function
+        mp_queue, sync_queue = Queue(), Queue()
+
+        proc = Process(target=execute_fun, args=(mp_queue, sync_queue, map_fn, args))
+        proc.start()
+
+        procs.append((proc, mp_queue, sync_queue))
+
+    results = []
+    for proc, mp_queue, sync_queue in procs:
+        # Save shared memory when using DOCKER
+        result = mp_queue.get().to("meta")
+        results.append(copy.deepcopy(result))
+
+        sync_queue.put(1)
+        del mp_queue, sync_queue
+
+    return results
+
+def execute_fun(mp_queue, sync_queue, map_fn, args):
+    output = map_fn(*args)
+    mp_queue.put(output)
+
+    # Close function
+    sync_queue.get()
+
+    return
+
 
 class NeoX20BModel(nn.Module):
     def __init__(self, args, use_cache=False, device=None):
@@ -17,13 +54,16 @@ class NeoX20BModel(nn.Module):
 
 
         # Multiprocessing init of transformer layers
-        layer_inputs = [(args, use_cache) for _ in range(args.num_layers)]
-        with Pool(torch.get_num_threads()) as p:
-            transformer_layers = p.starmap(TransformerLayer, layer_inputs)
-
         self.layer_list = nn.ModuleList([])
-        for transformer_layer in transformer_layers:
-            self.layer_list.append(transformer_layer)
+
+        layers = range(args.num_layers)
+        for i in range(0, args.num_layers, args.start_cpu_threads):
+            map_size = len(layers[i:i+args.start_cpu_threads])
+            print("Starting transformer layer", i)
+            layer_objects = q_map(TransformerLayer, map_size, (args, use_cache))
+
+            for layer in layer_objects:
+                self.layer_list.append(layer)
 
 
         self.final_layer_norm = nn.LayerNorm(
