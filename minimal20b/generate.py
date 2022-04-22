@@ -46,6 +46,7 @@ def greedy_generate(model: nn.Module, input_ids: torch.Tensor, max_seq_len: int,
             all_token_ids[i].append(greedy_predicted_token_ids[i])
         layer_past_length += input_length
 
+        print()
         print("                                             Generation complete, time taken:", time.time() - st)
         print()
         yield all_token_ids

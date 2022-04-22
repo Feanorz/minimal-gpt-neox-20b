@@ -1,20 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" autoUpload="Always" serverName="azureuser@20.90.157.17:22" remoteFilesAllowedToDisappearOnAutoupload="false" autoUploadExternalChanges="true" compareModeInSync="TIMESTAMP">
+  <component name="PublishConfigData" autoUpload="Always" remoteFilesAllowedToDisappearOnAutoupload="false" autoUploadExternalChanges="true" compareModeInSync="TIMESTAMP">
     <serverData>
-      <paths name="azureuser@20.90.157.17:22">
-        <serverdata>
-          <mappings>
-            <mapping deploy="/mnt/minimal-gpt-neox-20b" local="$PROJECT_DIR$" web="/" />
-          </mappings>
-          <excludedPaths>
-            <excludedPath path="/mnt/minimal-gpt-neox-20b/minimal20b/__pycache__" />
-            <excludedPath path="/mnt/minimal-gpt-neox-20b/.idea" />
-            <excludedPath local="true" path="$PROJECT_DIR$/.idea" />
-            <excludedPath local="true" path="$PROJECT_DIR$/scripts" />
-          </excludedPaths>
-        </serverdata>
-      </paths>
       <paths name="maccy@moriamine.ddns.net:2269">
         <serverdata>
           <mappings>

@@ -7,6 +7,8 @@ class Args20b:
     layernorm_epsilon = 1e-5
     num_layers = 44
     half_precision = False
+    start_cpu_threads = 30
+    gpu_layers = 20
 
 
 class ArgsDummy:

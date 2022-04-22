@@ -1,36 +1,43 @@
 import torch.nn as nn
 import torch
 import time
-
-# class Test(nn.Module):
-#     def __init__(self, i):
-#         super().__init__()
-#         self.param1 = torch.nn.parameter.Parameter(torch.tensor([1., 2., 3.], dtype=torch.float32))
-#         self.tensor1 = torch.tensor([1., 2., 3.], dtype=torch.float32)
-#
-#     def forward(self, x):
-#         return x + self.param1
-#
-#
-# test_class = Test(1)
-#
-# states = test_class.state_dict()
-# print(states, list(test_class.parameters()))
-# def chunk(x, n):
-#     length = len(x)
-
-# Multiprocessing init of transformer layers
-self.layer_list = nn.ModuleList([])
-with Pool(4) as p:
-    layer_inputs = [(args, use_cache) for _ in range(args.num_layers)]
-
-    for i in range(0, args.num_layers, 4):
-        batch = layer_inputs[i:i + 4]
-        transformer_layers = p.starmap(TransformerLayer, layer_inputs)
-
-        for transformer_layer in transformer_layers:
-            self.layer_list.append(transformer_layer)
-print("All layers initialised")
+from torch.multiprocessing import Process, Queue
 
 
+# Maps map_fn, onto args, n times
+def q_map(map_fn, n, args):
+    procs = []
+    for i in range(n):
+        # Make sure main process has enough time to load back output before destroying this function
+        mp_queue, sync_queue = Queue(), Queue()
 
+        proc = Process(target=execute_fun, args=(mp_queue, sync_queue, map_fn, args))
+        proc.start()
+
+        procs.append((proc, mp_queue, sync_queue))
+
+    results = []
+    for proc, mp_queue, sync_queue in procs:
+        results.append(mp_queue.get())
+
+        sync_queue.put(1)
+
+    return results
+
+
+def execute_fun(mp_queue, sync_queue, map_fn, args):
+    output = map_fn(*args)
+    mp_queue.put(output)
+    # Close function
+    sync_queue.get()
+
+
+
+class myClass:
+    def __init__(self, a, b):
+        print(a + b)
+
+
+
+x = q_map(myClass, 5, (5, 6))
+print(x)
