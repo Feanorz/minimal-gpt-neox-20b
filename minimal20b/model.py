@@ -1,11 +1,10 @@
 import torch.nn as nn
 import torch
 import math
-from torch.multiprocessing import Process, Queue, Pool
+from torch.multiprocessing import Process, Queue
 import time
 import copy
 import minimal20b.rotary as rotary
-import gc
 
 
 # Maps map_fn, onto args, n times
@@ -80,14 +79,13 @@ class NeoX20BModel(nn.Module):
 
     def forward(self, x, attention_mask=None, layer_past=None):
 
-        # Set input and output layers to float32
-        if self.half_precision:
-            self.embed_in.float()
-            self.final_layer_norm.float()
-            self.logits_out.float()
+        if self.gpu_layers != 0:
+            init_device = torch.device("cuda:0")
+        else:
+            init_device = torch.device("cpu")
 
         if attention_mask is None:
-            attention_mask = generate_mask(x.shape[1]).to(x.device)
+            attention_mask = generate_mask(x.shape[1], init_device)
         if self.use_cache:
             if layer_past is None:
                 kv_length = x.shape[1]
@@ -101,25 +99,21 @@ class NeoX20BModel(nn.Module):
         hidden_states = self.embed_in(x)
         hidden_states = self.pre_transformer_transpose(hidden_states)
 
-        print()
-        print("000000000000000", hidden_states)
-
 
         if self.gpu_layers != 0:
-            hidden_states = hidden_states.to(torch.device("cuda:0")).type(torch.float16)
-            print(hidden_states.device)
-            print("Sent to cuda")
+            hidden_states = hidden_states.to(init_device).type(torch.float16)
 
 
         for layer_i, layer in enumerate(self.layer_list):
-            print()
-            print(layer_i)
-            print(hidden_states)
-            if layer_i == self.gpu_layers + 1:
+            # Complete rest of forward pass on CPU
+            if self.gpu_layers and layer_i == self.gpu_layers:
+                # print("Sending to CPU and float")
+                # print()
                 hidden_states = hidden_states.to(torch.device("cpu")).float()
+                attention_mask = attention_mask.to(torch.device("cpu"))
 
-            if self.half_precision:
-                layer.float()
+            # if self.half_precision:
+            #     layer.float()
 
             hidden_states, kv_cache = layer(
                 x=hidden_states,
@@ -128,8 +122,8 @@ class NeoX20BModel(nn.Module):
             )
             kv_cache_list.append(kv_cache)
 
-            if self.half_precision:
-                layer.half()
+            # if self.half_precision:
+            #     layer.half()
 
         hidden_states = self.post_transformer_transpose(hidden_states)
         hidden_states = self.final_layer_norm(hidden_states)
@@ -168,8 +162,6 @@ class TransformerLayer(nn.Module):
 
     def forward(self, x, attention_mask, layer_past=None):
         residual = x
-        print("Layernorm input:", x.device)
-        print(self.input_layernorm.state_dict())
         ln_output = self.input_layernorm(x)
         attention_output, kv_cache = self.attention(
             ln_output,
@@ -386,16 +378,15 @@ class MLP(nn.Module):
         self.dense_4h_to_h = nn.Linear(ff_dim, args.hidden_size, device=device)
 
     def forward(self, hidden_states):
-        # print(hidden_states.shape)
-        # print(hidden_states.dtype)
+
         intermediate_parallel = self.dense_h_to_4h(hidden_states)
         intermediate_parallel = gelu(intermediate_parallel)
         output = self.dense_4h_to_h(intermediate_parallel)
         return output
 
 
-def generate_mask(seq_len):
-    return torch.tril(torch.ones((1, 1, seq_len, seq_len), dtype=torch.bool))
+def generate_mask(seq_len, device):
+    return torch.tril(torch.ones((1, 1, seq_len, seq_len), dtype=torch.bool, device=device))
 
 
 def attention_mask_func(attention_scores, ltor_mask):

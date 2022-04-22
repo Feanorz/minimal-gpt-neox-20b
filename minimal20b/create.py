@@ -40,21 +40,21 @@ def create_model(checkpoint_path, use_cache=False, device=torch.device("cpu")):
             layer.to(cpu).float()
 
 
-    # # Load transformer layers
-    # for layer_i in range(Args20b.num_layers):
-    #     pbar.set_description(f"Loading layer {layer_i}")
-    #     st = time.time()
-    #     state_dict = load_layer(checkpoint_path, layer_i)
-    #     st2 = time.time()
-    #     model.layer_list[layer_i].load_state_dict(state_dict)
-    #     torch.cuda.synchronize(device=torch.device("cuda:0"))
-    #     end = time.time()
-    #
-    #     print()
-    #     print("Time to load file:", st2 - st)
-    #     print("Time to load state:", end - st2)
-    #     del state_dict
-    #     pbar.update(1)
+    # Load transformer layers
+    for layer_i in range(Args20b.num_layers):
+        pbar.set_description(f"Loading layer {layer_i}")
+        st = time.time()
+        state_dict = load_layer(checkpoint_path, layer_i)
+        st2 = time.time()
+        model.layer_list[layer_i].load_state_dict(state_dict)
+        torch.cuda.synchronize(device=torch.device("cuda:0"))
+        end = time.time()
+
+        print()
+        print("Time to load file:", st2 - st)
+        print("Time to load state:", end - st2)
+        del state_dict
+        pbar.update(1)
 
     # Load input embedding
     pbar.set_description(f"Loading input embedding")
@@ -77,6 +77,12 @@ def create_model(checkpoint_path, use_cache=False, device=torch.device("cpu")):
     del logits_out
     pbar.update(1)
     pbar.set_description("Done.")
+
+    # Always have to be float, regardless of main model status
+    if Args20b.half_precision:
+        model.embed_in.float()
+        model.final_layer_norm.float()
+        model.logits_out.float()
 
     for param in model.parameters():
         param.requires_grad = False

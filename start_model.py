@@ -3,7 +3,7 @@ import torch
 
 print("Current threads:")
 print("   ", torch.get_num_threads())
-torch.set_num_threads(48)
+torch.set_num_threads(32)
 print("New Threads:")
 print("   ", torch.get_num_threads())
 
