@@ -37,7 +37,7 @@ def q_map(map_fn, n, args):
 
 def execute_fun(mp_queue, sync_queue, map_fn, args):
     output = map_fn(*args)
-    mp_queue.put(output)
+    mp_queue.put(output.half())
 
     # Close function
     sync_queue.get()
@@ -53,14 +53,13 @@ class NeoX20BModel(nn.Module):
         self.gpu_layers = args.gpu_layers
         self.embed_in = nn.Embedding(args.vocab_size, args.hidden_size, device=device)
 
-
         # Multiprocessing init of transformer layers
         self.layer_list = nn.ModuleList([])
 
         layers = range(args.num_layers)
         for i in range(0, args.num_layers, args.start_cpu_threads):
-            map_size = len(layers[i:i+args.start_cpu_threads])
-            print("Starting transformer layer", i)
+            map_size = len(layers[i:i + args.start_cpu_threads])
+            print("\n Starting transformer layer", i)
             layer_objects = q_map(TransformerLayer, map_size, (args, use_cache))
 
             for layer in layer_objects:
@@ -80,7 +79,7 @@ class NeoX20BModel(nn.Module):
 
         self.second_layer_list = None
         self.dynamic_precision = args.dynamic_precision
-
+        self.empty_layer = None
 
     def forward(self, x, attention_mask=None, layer_past=None):
 
@@ -104,26 +103,23 @@ class NeoX20BModel(nn.Module):
         hidden_states = self.embed_in(x)
         hidden_states = self.pre_transformer_transpose(hidden_states)
 
-
         if self.gpu_layers != 0:
             hidden_states = hidden_states.to(init_device).type(torch.float16)
 
-
         for layer_i, layer in enumerate(self.layer_list):
             #print(layer_i)
-            #st = time.time()
+            # st = time.time()
 
             # Complete rest of forward pass on CPU
             if self.gpu_layers and layer_i == self.gpu_layers:
                 hidden_states = hidden_states.to(torch.device("cpu")).float()
                 attention_mask = attention_mask.to(torch.device("cpu"))
 
-
             if self.dynamic_precision:
                 layer.load_state_dict(self.second_layer_list[layer_i])
             elif self.half_precision:
                 layer.float()
-            #print("Load weights:", time.time() - st)
+            # print("Load weights:", time.time() - st)
 
             hidden_states, kv_cache = layer(
                 x=hidden_states,
@@ -132,14 +128,15 @@ class NeoX20BModel(nn.Module):
             )
             kv_cache_list.append(kv_cache)
 
-            #st = time.time()
+            # st = time.time()
 
             if self.dynamic_precision:
                 layer.to_empty(device=torch.device("cpu"))
+                # layer.load_state_dict(self.empty_layer)
             elif self.half_precision:
                 layer.half()
 
-            #print(f'Time for layer {layer_i}: {time.time() - st :.2g}')
+            # print(f'Time for layer {layer_i}: {time.time() - st :.2g}')
 
         hidden_states = self.post_transformer_transpose(hidden_states)
         hidden_states = self.final_layer_norm(hidden_states)
@@ -384,7 +381,6 @@ def gelu(x):
     return x * 0.5 * (1.0 + torch.tanh(val))
 
 
-
 class MLP(nn.Module):
     def __init__(self, args, device=None):
         super().__init__()
@@ -394,7 +390,7 @@ class MLP(nn.Module):
 
     def forward(self, hidden_states):
         intermediate_parallel = self.dense_h_to_4h(hidden_states)
-        intermediate_parallel = F.gelu(intermediate_parallel)
+        intermediate_parallel = gelu(intermediate_parallel)
         output = self.dense_4h_to_h(intermediate_parallel)
         return output
 
@@ -407,6 +403,3 @@ def attention_mask_func(attention_scores, ltor_mask):
     """Assign -10000.0 to False cells in ltor_mask"""
     attention_scores.masked_fill_(~ltor_mask, -10000.0)
     return attention_scores
-
-
-

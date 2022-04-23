@@ -1,5 +1,5 @@
 import copy
-
+import gc
 import os
 from tqdm import auto as tqdm_lib
 import time
@@ -11,6 +11,9 @@ import tokenizers
 import minimal20b.model as model20b
 from minimal20b.constants import Args20b, ArgsDummy
 
+# Dynamic precision only works if half precision is also enabled
+if Args20b.dynamic_precision:
+    assert Args20b.half_precision
 
 def create_model(checkpoint_path, use_cache=False, device=torch.device("cpu")):
     """
@@ -29,7 +32,7 @@ def create_model(checkpoint_path, use_cache=False, device=torch.device("cpu")):
     if Args20b.half_precision or Args20b.dynamic_precision:
         model = model.half().to_empty(device=device)
     else:
-        model = model.to_empty(device=device)
+        model = model.float().to_empty(device=device)
 
     pbar.update(1)
 
@@ -37,43 +40,41 @@ def create_model(checkpoint_path, use_cache=False, device=torch.device("cpu")):
     cpu = torch.device("cpu")
     gpu = torch.device("cuda:0")
 
-    for i, layer in enumerate(model.layer_list):
-        if i < Args20b.gpu_layers:
-            layer.to(gpu).half()
-        else:
-            layer.to(cpu).float()
+    if Args20b.gpu_layers:
+        for i, layer in enumerate(model.layer_list):
+            if i < Args20b.gpu_layers:
+                layer.to(gpu).half()
+            else:
+                layer.to(cpu).float()
 
 
+    second_layer_list = []
     # Load transformer layers
     for layer_i in range(Args20b.num_layers):
         pbar.set_description(f"Loading layer {layer_i}")
         st = time.time()
         state_dict = load_layer(checkpoint_path, layer_i)
         st2 = time.time()
-        model.layer_list[layer_i].load_state_dict(state_dict)
-        torch.cuda.synchronize(device=torch.device("cuda:0"))
+        if Args20b.dynamic_precision:
+            second_layer_list.append(copy.deepcopy(state_dict))  # Already float16
+        else:
+            model.layer_list[layer_i].load_state_dict(state_dict)
+        # torch.cuda.synchronize(device=torch.device("cuda:0"))
         end = time.time()
 
         print()
         print("Time to load file:", st2 - st)
         print("Time to load state:", end - st2)
-        del state_dict
+        #del state_dict
         pbar.update(1)
 
 
-    for param in model.parameters():
-        param.requires_grad = False
-
     if Args20b.dynamic_precision:
-        pbar.set_description(f"Setting up duplicate layers")
-        model.half()
-
-        second_state_dict = []
+        pbar.set_description(f"Casting model to float")
+        model.second_layer_list = second_layer_list
+        # Cast to float without assigning large amounts of memory
         for layer in model.layer_list:
-            second_state_dict.append(copy.deepcopy(layer.state_dict()))
-
-        model.float().to_empty(device=torch.device("cpu"))
-        model.second_layer_list = second_state_dict
+            layer.float().to_empty(device=torch.device("cpu"))
 
 
     # Input and output embeddings, always have to be float
@@ -103,6 +104,45 @@ def create_model(checkpoint_path, use_cache=False, device=torch.device("cpu")):
     del logits_out
     pbar.update(1)
     pbar.set_description("Done.")
+
+    # for layer in model.layer_list:
+    #     st = time.time()
+    #
+    #     #layer.to_empty(device=torch.device("cpu"))
+    #     layer.load_state_dict(empty_states)
+    #
+    #     end = time.time() - st
+    #     print("Time to convert layer to empty:", end)
+    #
+    # assert 1 == 2
+
+
+    # if Args20b.dynamic_precision:
+    #     pbar.set_description(f"Setting up duplicate layers")
+    #     model.half()
+    #
+    #     # Duplicate Layer
+    #     second_state_dict = []
+    #     for layer in model.layer_list:
+    #         second_state_dict.append(copy.deepcopy(layer.state_dict()))
+    #         layer.to_empty(device=torch.device("cpu"))
+    #
+    #     model.float().to_empty(device=torch.device("cpu"))
+    #     model.second_layer_list = second_state_dict
+
+        # Empty Layers
+        # layer = next(iter(model.layer_list))
+        # state_dict = layer.state_dict()
+        # for name, state in state_dict.items():
+        #     state_dict[name] = torch.empty_like(state)
+
+        #empty_states = copy.deepcopy(state_dict)
+        # model.empty_layer = state_dict
+
+
+
+
+    gc.collect()
 
     return model
 
