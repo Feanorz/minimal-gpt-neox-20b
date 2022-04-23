@@ -1,4 +1,5 @@
 import torch.nn as nn
+import torch.nn.functional as F
 import torch
 import math
 from torch.multiprocessing import Process, Queue
@@ -77,6 +78,10 @@ class NeoX20BModel(nn.Module):
             device=device,
         )
 
+        self.second_layer_list = None
+        self.dynamic_precision = args.dynamic_precision
+
+
     def forward(self, x, attention_mask=None, layer_past=None):
 
         if self.gpu_layers != 0:
@@ -105,15 +110,20 @@ class NeoX20BModel(nn.Module):
 
 
         for layer_i, layer in enumerate(self.layer_list):
+            #print(layer_i)
+            #st = time.time()
+
             # Complete rest of forward pass on CPU
             if self.gpu_layers and layer_i == self.gpu_layers:
-                # print("Sending to CPU and float")
-                # print()
                 hidden_states = hidden_states.to(torch.device("cpu")).float()
                 attention_mask = attention_mask.to(torch.device("cpu"))
 
-            # if self.half_precision:
-            #     layer.float()
+
+            if self.dynamic_precision:
+                layer.load_state_dict(self.second_layer_list[layer_i])
+            elif self.half_precision:
+                layer.float()
+            #print("Load weights:", time.time() - st)
 
             hidden_states, kv_cache = layer(
                 x=hidden_states,
@@ -122,8 +132,14 @@ class NeoX20BModel(nn.Module):
             )
             kv_cache_list.append(kv_cache)
 
-            # if self.half_precision:
-            #     layer.half()
+            #st = time.time()
+
+            if self.dynamic_precision:
+                layer.to_empty(device=torch.device("cpu"))
+            elif self.half_precision:
+                layer.half()
+
+            #print(f'Time for layer {layer_i}: {time.time() - st :.2g}')
 
         hidden_states = self.post_transformer_transpose(hidden_states)
         hidden_states = self.final_layer_norm(hidden_states)
@@ -364,9 +380,8 @@ class SelfAttention(nn.Module):
 
 @torch.jit.script
 def gelu(x):
-    val_16 = 0.79788456 * x * (1 + 0.044715 * x * x)
-    val_32 = val_16.type(torch.float32)
-    return x * 0.5 * (1.0 + torch.tanh(val_32).type(torch.float16))
+    val = 0.79788456 * x * (1 + 0.044715 * x * x)
+    return x * 0.5 * (1.0 + torch.tanh(val))
 
 
 
@@ -378,15 +393,9 @@ class MLP(nn.Module):
         self.dense_4h_to_h = nn.Linear(ff_dim, args.hidden_size, device=device)
 
     def forward(self, hidden_states):
-        print(hidden_states.device)
-        while True:
-            st = time.time()
-            intermediate_parallel = self.dense_h_to_4h(hidden_states)
-            intermediate_parallel = gelu(intermediate_parallel)
-            output = self.dense_4h_to_h(intermediate_parallel)
-
-            print()
-            print(time.time() - st)
+        intermediate_parallel = self.dense_h_to_4h(hidden_states)
+        intermediate_parallel = F.gelu(intermediate_parallel)
+        output = self.dense_4h_to_h(intermediate_parallel)
         return output
 
 

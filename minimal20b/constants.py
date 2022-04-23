@@ -6,9 +6,12 @@ class Args20b:
     rotary_emb_base = 10000
     layernorm_epsilon = 1e-5
     num_layers = 44
-    half_precision = True
+    # Inference Arguments
+    half_precision = False
+    dynamic_precision = False
     start_cpu_threads = 32
-    gpu_layers = 0
+    gpu_layers = 20
+
 
 
 class ArgsDummy:
