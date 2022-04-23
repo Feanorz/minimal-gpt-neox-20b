@@ -23,7 +23,7 @@ print("Doing Inference")
 with torch.inference_mode():
     output = minimal20b.greedy_generate_text(
         model, tokenizer,
-        "I am the Senate, said Palpatine.",
+        '"I am the Senate", said Palpatine.',
         max_seq_len=500,
     )
 

@@ -7,8 +7,8 @@ class Args20b:
     layernorm_epsilon = 1e-5
     num_layers = 44
     # Inference Arguments
-    half_precision = True
-    dynamic_precision = True
+    half_precision = False
+    dynamic_precision = False
     start_cpu_threads = 64
     gpu_layers = 20
 

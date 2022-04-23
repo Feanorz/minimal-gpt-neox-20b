@@ -14,6 +14,8 @@ from minimal20b.constants import Args20b, ArgsDummy
 # Dynamic precision only works if half precision is also enabled
 if Args20b.dynamic_precision:
     assert Args20b.half_precision
+if Args20b.gpu_layers:
+    assert not (Args20b.dynamic_precision or Args20b.half_precision)
 
 def create_model(checkpoint_path, use_cache=False, device=torch.device("cpu")):
     """
