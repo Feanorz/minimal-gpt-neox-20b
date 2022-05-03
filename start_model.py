@@ -10,7 +10,6 @@ print("   ", torch.get_num_threads())
 model = minimal20b.create_model(
     "/root/20B_checkpoints/global_step150000/compressed",
     use_cache=True,
-    device="cpu",
 )
 print("Model created")
 print("________________________")

@@ -8,33 +8,48 @@ class TestClass(torch.nn.Module):
 
     def __init__(self):
         super(TestClass, self).__init__()
-        self.param1 = nn.Linear(100, 100)
+        self.param1 = nn.Linear(2, 10)
+        self.param2 = torch.nn.parameter.Parameter(torch.tensor([1.]))
 
 
     def forward(self, x):
-        return self.param1(x)
+        with torch.no_grad():
+            return self.param1(x)
+
 
 
 testclass = TestClass()
+testclass.half()
+print(testclass.state_dict())
+print()
+for name, param in testclass.named_parameters():
+    param.to(device=torch.device("cuda:0"))
+    print(param.is_pinned())
+    param.to(device=torch.device("cpu"))
+    param.pin_memory()
+    print(param.is_pinned())
 
-for param in testclass.parameters():
-    print(param)
-
-# saved = copy.deepcopy(testclass.state_dict())
+    #torch.nn.init.ones_(param)
+    param.data = torch.tensor([1.], dtype=torch.float32)
 #
-# state_dict = testclass.state_dict()
-# #state_dict["param1.weight"] = torch.tensor([1])
-# print(testclass._modules)
-# setattr(testclass, "_modules", state_dict)
-# print(testclass._modules)
-# print()
-# print()
-# print(testclass.state_dict())
-# print("New parameters")
-# for param, v in testclass.state_dict().items():
-#     print(param, v)
-#
-# x = testclass.load_state_dict(saved)
-# print(x)
-# for param in testclass.state_dict():
+print()
+print()
+# for param in testclass.parameters():
 #     print(param)
+# param = getattr(testclass.param1, "weight")
+# torch.nn.init.ones_(param)
+#
+# param = getattr(testclass.param1, "bias")
+# torch.nn.init.ones_(param)
+#print(param)
+
+#setattr(testclass.param1, "weight", None)
+#
+# for name, param in testclass.named_parameters():
+#     print(name, param)
+#
+# print()
+# print()
+#
+# # out = testclass(torch.tensor([1., 2.]))
+# # print(out)

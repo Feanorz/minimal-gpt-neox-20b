@@ -50,7 +50,6 @@ class NeoX20BModel(nn.Module):
         super().__init__()
         self.half_precision = args.half_precision
         self.use_cache = use_cache
-        self.gpu_layers = args.gpu_layers
         self.embed_in = nn.Embedding(args.vocab_size, args.hidden_size, device=device)
 
         # Multiprocessing init of transformer layers
@@ -78,8 +77,14 @@ class NeoX20BModel(nn.Module):
         )
 
         self.second_layer_list = None
+        self.empty_layer = None
         self.dynamic_precision = args.dynamic_precision
         self.empty_layer = None
+
+        self.use_gpu = args.use_gpu
+        self.full_gpu = args.full_gpu
+        self.gpu_layers = args.gpu_layers
+
 
     def forward(self, x, attention_mask=None, layer_past=None):
 
@@ -106,20 +111,15 @@ class NeoX20BModel(nn.Module):
         if self.gpu_layers != 0:
             hidden_states = hidden_states.to(init_device).type(torch.float16)
 
-        for layer_i, layer in enumerate(self.layer_list):
+        for layer_i in range(len(self.layer_list)):
             #print(layer_i)
-            # st = time.time()
 
-            # Complete rest of forward pass on CPU
-            if self.gpu_layers and layer_i == self.gpu_layers:
-                hidden_states = hidden_states.to(torch.device("cpu")).float()
+            # # Complete rest of forward pass on CPU
+            if not self.full_gpu and self.gpu_layers and layer_i == self.gpu_layers:
+                hidden_states = hidden_states.to(device=torch.device("cpu"), dtype=torch.float32)
                 attention_mask = attention_mask.to(torch.device("cpu"))
 
-            if self.dynamic_precision:
-                layer.load_state_dict(self.second_layer_list[layer_i])
-            elif self.half_precision:
-                layer.float()
-            # print("Load weights:", time.time() - st)
+            layer = self._load_layer(layer_i)
 
             hidden_states, kv_cache = layer(
                 x=hidden_states,
@@ -128,23 +128,60 @@ class NeoX20BModel(nn.Module):
             )
             kv_cache_list.append(kv_cache)
 
-            # st = time.time()
+            self._return_layer(layer, layer_i)
 
-            if self.dynamic_precision:
-                layer.to_empty(device=torch.device("cpu"))
-                # layer.load_state_dict(self.empty_layer)
-            elif self.half_precision:
-                layer.half()
 
-            # print(f'Time for layer {layer_i}: {time.time() - st :.2g}')
+        if self.full_gpu:
+            hidden_states = hidden_states.to(device=torch.device("cpu"), dtype=torch.float32)
 
         hidden_states = self.post_transformer_transpose(hidden_states)
         hidden_states = self.final_layer_norm(hidden_states)
         logits = self.logits_out(hidden_states)
+
         if self.use_cache:
             return logits, kv_cache_list
         else:
             return logits
+
+    def _load_layer(self, layer_i):
+        layer = self.layer_list[layer_i]
+
+        if self.use_gpu:
+            if self.full_gpu and layer_i >= self.gpu_layers:
+                #layer.to(device=torch.device("cuda:0"), non_blocking=True)
+                #layer.load_state_dict(self.second_layer_list[layer_i])
+                saved_layer = self.second_layer_list[layer_i]
+                for name, param in layer.named_parameters():
+                    param.data = saved_layer[name].to(torch.device("cuda:0"), non_blocking=True)
+                for name, buff in layer.named_buffers():
+                    buff.data = saved_layer[name].to(torch.device("cuda:0"), non_blocking=True)
+
+        elif self.dynamic_precision:
+            saved_layer = self.second_layer_list[layer_i]
+            for name, param in layer.named_parameters():
+                param.data = saved_layer[name].float()
+            for name, buff in layer.named_buffers():
+                buff.data = saved_layer[name].float()
+        #     #
+            # #print(model_layer.state_dict())
+            #layer.load_state_dict(self.second_layer_list[layer_i])
+        elif self.half_precision:
+            layer.float()
+        return layer
+
+    def _return_layer(self, layer, layer_i):
+        if self.use_gpu:
+            if self.full_gpu and layer_i >= self.gpu_layers:
+                #layer.to(device=torch.device("cpu"), non_blocking=True)
+                layer.to_empty(device=torch.device("cpu"))
+        elif self.dynamic_precision:
+            # for name, param in layer.named_parameters():
+            #     param.data = self.empty_layer[name]
+            layer.to_empty(device=torch.device("cpu"))
+        elif self.half_precision:
+            layer.half()
+        #return layer_i
+
 
     @classmethod
     def pre_transformer_transpose(cls, x):
