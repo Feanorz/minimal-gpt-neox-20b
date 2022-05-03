@@ -1,3 +1,20 @@
+# GPT NeoX-20B - Running on CPU / GPU / Hybrid
+
+Running GPT NeoX on devices that have less than 40GB VRAM by splitting model between CPU RAM and GPU VRAM. 
+
+Available in configurations: 
+* Full CPU (all in fp32, 80GB CPU RAM, AVX-512 recommended)
+* Full CPU (Stored in FP16, compute in FP32, 40GB CPU RAM, AVX-512 recommended)
+* Split compute between GPU and CPU (Total memory > 40GB)
+* Compute on GPU, CPU as weight cach (Total memory > 40GB)
+
+
+Built using https://github.com/zphang/minimal-gpt-neox-20b
+
+
+WIP
+
+# Original Readme: 
 # Minimal GPT-NeoX-20B
 
 This is a fairly minimal implementation of GPT-NeoX-20B in PyTorch. It is meant primarily as an educational/reference implementation, rather than an optimized or feature-full implementation. 
