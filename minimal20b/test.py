@@ -20,17 +20,13 @@ class TestClass(torch.nn.Module):
 
 testclass = TestClass()
 testclass.half()
-print(testclass.state_dict())
 print()
 for name, param in testclass.named_parameters():
-    param.to(device=torch.device("cuda:0"))
-    print(param.is_pinned())
-    param.to(device=torch.device("cpu"))
-    param.pin_memory()
-    print(param.is_pinned())
+    print(param.data)
 
     #torch.nn.init.ones_(param)
-    param.data = torch.tensor([1.], dtype=torch.float32)
+    param.data = 1.#torch.tensor([1.], dtype=torch.float32)
+    print(param.data)
 #
 print()
 print()

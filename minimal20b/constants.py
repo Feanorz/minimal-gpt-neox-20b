@@ -6,8 +6,9 @@ class Args20b:
     rotary_emb_base = 10000
     layernorm_epsilon = 1e-5
     num_layers = 44
+
     # Inference Arguments
-    start_cpu_threads = 64
+    start_cpu_threads = 32
 
     # Standard fp32 CPU
     full_precision_cpu = False

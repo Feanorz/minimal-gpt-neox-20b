@@ -15,14 +15,21 @@ from minimal20b.constants import Args20b, ArgsDummy
 if Args20b.dynamic_precision:
     assert Args20b.half_precision
 # If full_gpu is enabled, gpu must be used, half precision must be enabled and dynamic precision must be disabled
+
+
+
 # if Args20b.full_gpu:
 #     assert Args20b.half_precision
 #     assert not Args20b.dynamic_precision
 #     assert Args20b.gpu_layers
-# If using GPU without full_gpu, half precision and dynamic precision must be off
-if Args20b.gpu_layers and not Args20b.full_gpu:
+
+# If using GPU, disable all CPU modes
+if Args20b.use_gpu:
+    assert not Args20b.full_precision_cpu
     assert not Args20b.half_precision
     assert not Args20b.dynamic_precision
+    assert not Args20b.use_state_dict
+
 if Args20b.use_gpu:
     assert Args20b.gpu_layers != 0
 
@@ -49,7 +56,7 @@ def create_model(checkpoint_path, use_cache=False):
     if Args20b.use_gpu:
         for i, layer in enumerate(model.layer_list):
             if i < Args20b.gpu_layers:
-                layer.half().to_empty(device=gpu)#.half()
+                layer.half().to_empty(device=gpu)
             elif Args20b.full_gpu:
                 layer.half().to_empty(device=cpu)
             else:
@@ -74,8 +81,10 @@ def create_model(checkpoint_path, use_cache=False):
         state_dict = load_layer(checkpoint_path, layer_i)
         if Args20b.dynamic_precision:
             second_layer_list.append(copy.deepcopy(state_dict))  # Already float16
+
         elif Args20b.full_gpu and layer_i >= Args20b.gpu_layers:
             second_layer_list.append(copy.deepcopy(state_dict))
+
         else:
             model.layer_list[layer_i].load_state_dict(state_dict)
         del state_dict

@@ -148,13 +148,11 @@ class NeoX20BModel(nn.Module):
 
         if self.use_gpu:
             if self.full_gpu and layer_i >= self.gpu_layers:
-                #layer.to(device=torch.device("cuda:0"), non_blocking=True)
-                #layer.load_state_dict(self.second_layer_list[layer_i])
                 saved_layer = self.second_layer_list[layer_i]
                 for name, param in layer.named_parameters():
-                    param.data = saved_layer[name].to(torch.device("cuda:0"), non_blocking=True)
+                    param.data = saved_layer[name].to(torch.device("cuda:0"))
                 for name, buff in layer.named_buffers():
-                    buff.data = saved_layer[name].to(torch.device("cuda:0"), non_blocking=True)
+                    buff.data = saved_layer[name].to(torch.device("cuda:0"))
 
         elif self.dynamic_precision:
             saved_layer = self.second_layer_list[layer_i]
