@@ -10,8 +10,8 @@ class Args20b:
     # Inference Arguments
     start_cpu_threads = 32
     # Sample output or pick most likely
-    sample_output = False
-    sample_temp = 1
+    sample_output = True
+    sample_temp = 0.6
 
     # Standard fp32 CPU
     full_precision_cpu = False

@@ -26,7 +26,7 @@ def sample_generate(model: nn.Module, input_ids: torch.Tensor, max_seq_len: int,
         )
 
         if Args20b.sample_output:
-            output_distribution = torch.distributions.Categorical(logits=model_out[:, -1])
+            output_distribution = torch.distributions.Categorical(logits=model_out[:, -1] / Args20b.sample_temp)
             prediction = output_distribution.sample()
         else:
             prediction = model_out[:, -1].argmax(-1)
