@@ -2,25 +2,16 @@ import torch
 import torch.nn as nn
 from tqdm import auto as tqdm_lib
 import time
+from minimal20b.constants import Args20b
 
 
-def greedy_generate(model: nn.Module, input_ids: torch.Tensor, max_seq_len: int, verbose=True, sample_output=True):
-    """Generate greedily from 20B.
-
-    :param model: NeoX20BModel
-    :param input_ids: token IDs [batch_size, seq_len]
-    :param max_seq_len: max sequence length to generate up to (includes input_ids)
-    :param verbose: whether to print progress
-
-    :return: List of token IDs
-    """
+def sample_generate(model: nn.Module, input_ids: torch.Tensor, max_seq_len: int, verbose=True):
     initial_input_length = input_ids.shape[1]
     current_input_ids = input_ids
     layer_past = None
     layer_past_length = 0
     all_token_ids = input_ids.tolist()
     batch_size = len(all_token_ids)
-
 
     trange = range(initial_input_length, max_seq_len)
 
@@ -33,49 +24,38 @@ def greedy_generate(model: nn.Module, input_ids: torch.Tensor, max_seq_len: int,
             current_input_ids,
             layer_past=layer_past,
         )
-        if sample_output:
+
+        if Args20b.sample_output:
             output_distribution = torch.distributions.Categorical(logits=model_out[:, -1])
             prediction = output_distribution.sample()
         else:
             prediction = model_out[:, -1].argmax(-1)
 
-
-        greedy_predicted_token_ids = prediction
-        current_input_ids = greedy_predicted_token_ids[:, None]
+        predicted_token_ids = prediction
+        current_input_ids = predicted_token_ids[:, None]
         for i in range(batch_size):
-            all_token_ids[i].append(greedy_predicted_token_ids[i])
+            all_token_ids[i].append(predicted_token_ids[i])
         layer_past_length += input_length
 
         print()
         print("                                             Generation complete, time taken:", time.time() - st)
         print()
         yield all_token_ids
-    #return all_token_ids
+    # return all_token_ids
 
 
-def greedy_generate_text(model: nn.Module,
+# Sample output of model. Method of sampling given in constants.py
+def sample_generate_text(model: nn.Module,
                          tokenizer,
                          initial_str: str,
                          max_seq_len: int,
                          device=torch.device("cpu"),
                          verbose=True):
-    """Generate greedily from 20B.
-
-    :param model: NeoX20BModel
-    :param tokenizer: NeoX20B tokenizer
-    :param initial_str: initial string to start generation from
-    :param max_seq_len: max sequence length to generate up to (includes input_ids)
-    :param device: device to use
-    :param verbose: whether to print progress
-
-    :return: List of token IDs
-    """
     print("Generating Text")
     print()
     tokenized = tokenizer.encode(initial_str)
     input_ids = torch.LongTensor([tokenized.ids, tokenized.ids]).to(device)
-    all_token_ids = greedy_generate(model=model, input_ids=input_ids, max_seq_len=max_seq_len, verbose=verbose)
-
+    all_token_ids = sample_generate(model=model, input_ids=input_ids, max_seq_len=max_seq_len, verbose=verbose)
 
     last = None
     while True:

@@ -18,7 +18,7 @@ tokenizer = minimal20b.create_tokenizer(
 
 print("Doing Inference")
 with torch.inference_mode():
-    output = minimal20b.greedy_generate_text(
+    output = minimal20b.sample_generate_text(
         model, tokenizer,
         '"I am the Senate", said Palpatine.',
         max_seq_len=500,

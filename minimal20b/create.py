@@ -9,7 +9,7 @@ import torch
 import tokenizers
 
 import minimal20b.model as model20b
-from minimal20b.constants import Args20b, ArgsDummy
+from minimal20b.constants import Args20b
 
 # Dynamic precision only works if half precision is also enabled
 if Args20b.dynamic_precision:
