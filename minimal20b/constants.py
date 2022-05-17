@@ -11,7 +11,7 @@ class Args20b:
     start_cpu_threads = 32
     # Sample output or pick most likely
     sample_output = True
-    sample_temp = 0.6
+    sample_temp = 0.7
 
     # Standard fp32 CPU
     full_precision_cpu = False
@@ -19,14 +19,15 @@ class Args20b:
     half_precision = False
     # Store layers in separate list, copy layer to model when needed then delete layer in model.
     dynamic_precision = False
-    # Load weights using state_dict()
+    # # Load weights using state_dict()
     use_state_dict = False
 
+    # Default GPU config: fp16 on GPU then fp32 on CPU
     use_gpu = True
     # Number of layers to store on GPU
-    gpu_layers = 20
-    # Store CPU weights using fp16, move to GPU when needed
-    full_gpu = True
+    gpu_layers = 1
+    # Store CPU weights using fp16, move to GPU and do computation on GPU
+    full_gpu = False
 
 
 

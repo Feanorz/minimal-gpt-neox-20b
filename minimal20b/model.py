@@ -77,7 +77,6 @@ class NeoX20BModel(nn.Module):
         )
 
         self.second_layer_list = None
-        self.empty_layer = None
         self.dynamic_precision = args.dynamic_precision
         self.empty_layer = None
 
@@ -88,7 +87,7 @@ class NeoX20BModel(nn.Module):
 
     def forward(self, x, attention_mask=None, layer_past=None):
 
-        if self.gpu_layers != 0:
+        if self.use_gpu:
             init_device = torch.device("cuda:0")
         else:
             init_device = torch.device("cpu")
@@ -155,14 +154,13 @@ class NeoX20BModel(nn.Module):
                     buff.data = saved_layer[name].to(torch.device("cuda:0"))
 
         elif self.dynamic_precision:
-            saved_layer = self.second_layer_list[layer_i]
-            for name, param in layer.named_parameters():
-                param.data = saved_layer[name].float()
-            for name, buff in layer.named_buffers():
-                buff.data = saved_layer[name].float()
-        #     #
-            # #print(model_layer.state_dict())
-            #layer.load_state_dict(self.second_layer_list[layer_i])
+            # saved_layer = self.second_layer_list[layer_i]
+            # for name, param in layer.named_parameters():
+            #     param.data = saved_layer[name].float()
+            # for name, buff in layer.named_buffers():
+            #     buff.data = saved_layer[name].float()
+
+            layer.load_state_dict(self.second_layer_list[layer_i])
         elif self.half_precision:
             layer.float()
         return layer

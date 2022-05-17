@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" autoUpload="Always" serverName="Vast3" remoteFilesAllowedToDisappearOnAutoupload="false" autoUploadExternalChanges="true">
+  <component name="PublishConfigData" autoUpload="Always" serverName="maccy@moriamine.ddns.net:2269" remoteFilesAllowedToDisappearOnAutoupload="false" autoUploadExternalChanges="true" compareModeInSync="TIMESTAMP">
     <serverData>
       <paths name="Vast3">
         <serverdata>
@@ -14,6 +14,10 @@
           <mappings>
             <mapping deploy="/Documents/ReinforcementLearning" local="/mnt/storagedisk/SpinningUp" web="/" />
           </mappings>
+          <excludedPaths>
+            <excludedPath local="true" path="/mnt/storagedisk/SpinningUp/EdgeCaching/ml-latest" />
+            <excludedPath path="/Documents/ReinforcementLearning/EdgeCaching/ml-latest" />
+          </excludedPaths>
         </serverdata>
       </paths>
     </serverData>

@@ -14,14 +14,7 @@ from minimal20b.constants import Args20b
 # Dynamic precision only works if half precision is also enabled
 if Args20b.dynamic_precision:
     assert Args20b.half_precision
-# If full_gpu is enabled, gpu must be used, half precision must be enabled and dynamic precision must be disabled
 
-
-
-# if Args20b.full_gpu:
-#     assert Args20b.half_precision
-#     assert not Args20b.dynamic_precision
-#     assert Args20b.gpu_layers
 
 # If using GPU, disable all CPU modes
 if Args20b.use_gpu:
@@ -61,11 +54,12 @@ def create_model(checkpoint_path, use_cache=False):
                 layer.half().to_empty(device=cpu)
             else:
                 layer.float().to_empty(device=cpu)
+
     # CPU only
     elif Args20b.half_precision:
         model = model.half().to_empty(device=cpu)
+    # Standard fp32 CPU implementation
     elif Args20b.full_precision_cpu:
-        # Standard fp32 CPU implementation
         model = model.float().to_empty(device=cpu)
     else:
         assert 1 == 2
@@ -101,18 +95,17 @@ def create_model(checkpoint_path, use_cache=False):
 
     if Args20b.dynamic_precision:
         pbar.set_description(f"Casting model to float for dynamic precision")
-        #model.second_layer_list = second_layer_list
         # Cast to float without assigning large amounts of memory
         for layer in model.layer_list:
             layer.float().to_empty(device=cpu)
 
-        if Args20b.use_state_dict:
-            for layer in model.layer_list:
-                state_dict = layer.state_dict()
-                for name, state in state_dict.items():
-                    state_dict[name] = torch.empty_like(state)
-                model.empty_layer = state_dict
-                break
+        # if Args20b.use_state_dict:
+        #     for layer in model.layer_list:
+        #         state_dict = layer.state_dict()
+        #         for name, state in state_dict.items():
+        #             state_dict[name] = torch.empty_like(state)
+        #         model.empty_layer = state_dict
+        #         break
 
 
     # Input and output embeddings, always have to be float
